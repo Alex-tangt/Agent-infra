@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { DemoApiClient } from "../src/api/apiClient.ts";
+import type { DemoApi } from "../src/mockDemoApi.ts";
 
 type Captured = { url: string; init: RequestInit };
 
@@ -107,4 +108,12 @@ test("non-ok response throws", async () => {
   });
 
   await assert.rejects(() => client.getTelemetry("demo-x"));
+});
+
+test("DemoApiClient satisfies the DemoApi seam (OTel-backed backend drops in)", () => {
+  const client: DemoApi = new DemoApiClient("http://localhost:8000");
+
+  assert.equal(typeof client.sendChat, "function");
+  assert.equal(typeof client.getTelemetry, "function");
+  assert.equal(typeof client.triggerAblation, "function");
 });
