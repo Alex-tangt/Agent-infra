@@ -1,0 +1,20 @@
+{
+  "name": "assembler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "组装器（TS）：需求→配方转换核心 + structured-output 工具",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "pretest": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.52"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}
