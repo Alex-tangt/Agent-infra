@@ -145,6 +145,20 @@ def test_component_swap_variable_replaces_id_and_rewires_references():
     assert {"from": "memory-window", "to": "agent-single"} in variant["connections"]
 
 
+def test_component_swap_without_replacement_is_rejected():
+    variant = ComponentSwap("context-window")
+
+    with pytest.raises(ValueError, match="replacement_id"):
+        variant.apply(BASE_RECIPE)
+
+
+def test_component_swap_to_existing_id_is_rejected():
+    variant = ComponentSwap("context-window", replacement_id="tool-caller")
+
+    with pytest.raises(ValueError, match="already exists"):
+        variant.apply(BASE_RECIPE)
+
+
 def test_component_remove_variable_drops_component_connections_and_parameters():
     variant = ComponentRemove("tool-caller").apply(BASE_RECIPE)
 

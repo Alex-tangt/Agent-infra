@@ -5,7 +5,7 @@ description: 组装器设计知识：单 agent 标配组合模式（agent = 模�
 
 # 单 agent 标配组合
 
-agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎所有需求的第一默认形态：一个薄容器（agent-single）把三个零件外插进来，只负责跑循环、停止、返回。本库第一版目标形态就是它（见 CONTEXT.md 的「单体 agent demo」）。
+agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎所有需求的第一默认形态：一个薄容器（agent-single）把三个组件外插进来，只负责跑循环、停止、返回。本库第一版目标形态就是它（见 CONTEXT.md 的「单体 agent demo」）。
 
 ## 何时用
 
@@ -14,7 +14,7 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 - 需要长期/跨会话记忆 → 加记忆组件（后续 skill）。
 - 需要从外部文档/知识库取上下文 → 加检索/RAG 组件。
 - 需要多个角色或子任务协作 → 升级为多 agent 编排。
-- 只有一个零件变更（例如纯问答不需要工具）→ 仍保留三件套骨架，工具列表给空即可，不要删结构——agent 是薄容器，零件外插，删掉任何一个都会被接线引擎判为缺件。
+- 只有一个组件变更（例如纯问答不需要工具）→ 仍保留三件套骨架，工具列表给空即可，不要删结构——agent 是薄容器，组件外插，删掉任何一个都会被接线引擎判为缺件。
 
 反例：需求已经是多 agent / RAG / 记忆，不要硬套本模式。
 
@@ -29,11 +29,11 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 | `tool-caller` | 1.0 | 工具调用 | 工具的挂载点；从需求里抽取外部能力（算数、查询、检索等）登记为 `tools` 列表，无工具则给空列表 |
 | `agent-single` | 1.0 | 组装容器 | 薄循环容器，唯一负责编排与停止条件；本模式的核心，不能省略 |
 
-选择铁律：三件套缺一不可。接线引擎在生成时校验 agent 必须同时接入 model、context、tools 三个零件，缺件直接报错（见 wiring/engine.py 的 `_agent_parts`）。
+选择铁律：三件套缺一不可。接线引擎在生成时校验 agent 必须同时接入 model、context、tools 三个组件，缺件直接报错（见 wiring/engine.py 的 `_agent_parts`）。
 
 ## 怎么连线（组合边）
 
-组合边 = 配方里的 `connections`。本模式只有一种边：**零件 → agent-single**。方向固定为"零件流入容器"，接线引擎据此把三件套注入 `Agent(model=..., context=..., tools=...)` 的构造函数。
+组合边 = 配方里的 `connections`。本模式只有一种边：**组件 → agent-single**。方向固定为"组件流入容器"，接线引擎据此把三件套注入 `Agent(model=..., context=..., tools=...)` 的构造函数。
 
 三条件，缺一不可：
 
@@ -41,7 +41,7 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 2. `context-window -> agent-single`
 3. `tool-caller -> agent-single`
 
-注意：边是"零件指向 agent"，不要反着连；agent 是薄容器不主动连接任何零件。串联链上 agent-single 是链头，消费 `user_message`（string）并产出 `reply`（string），其余零件不进串联链、只作为 agent 的零件被注入。
+注意：边是"组件指向 agent"，不要反着连；agent 是薄容器不主动连接任何组件。串联链上 agent-single 是链头，消费 `user_message`（string）并产出 `reply`（string），其余组件不进串联链、只作为 agent 的组件被注入。
 
 ## 参数默认建议
 
@@ -60,7 +60,7 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 
 ## 完整配方示例
 
-以"计算器 agent"为例（与 tests/test_e2e.py 的 `CALCULATOR_RECIPE` 一致）：
+以"计算器 agent"为例（结构与 tests/test_e2e.py 的 `CALCULATOR_RECIPE` 一致）：
 
 ```json
 {
@@ -77,8 +77,7 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
     { "from": "tool-caller", "to": "agent-single" }
   ],
   "parameters": {
-    "model-openai": { "model": "gpt-4o-mini", "temperature": 0.0, "max_tokens": 1024 },
-    "context-window": { "max_rounds": 5, "strategy": "truncate" },
+    "model-openai": { "model": "gpt-4o-mini", "temperature": 0.0 },
     "tool-caller": { "tools": [{ "name": "add", "description": "sum of two numbers", "func": "lambda a, b: a + b" }] },
     "agent-single": { "max_iterations": 3 }
   }

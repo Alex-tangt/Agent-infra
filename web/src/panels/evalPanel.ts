@@ -9,9 +9,9 @@ export interface EvalPanelState {
 // 评估入口依赖的接口契约（测试接缝）：与 DemoApi 共享，MockDemoApi 与 DemoApiClient 均满足。
 export type EvalApi = Pick<DemoApi, "triggerAblation">;
 
-// 消融会话：把选中的消融变量发给 runner，落地 AblationRun 供展示。
+// 消融会话：把选中的消融变量发给 runner，累积各变体的结果供并排对比。
 export class EvalSession {
-  private run: AblationRun | null = null;
+  private results: AblationRun["results"] = [];
   private pending = false;
   private readonly demoId: string;
   private readonly api: EvalApi;
@@ -22,7 +22,7 @@ export class EvalSession {
   }
 
   getState(): EvalPanelState {
-    return { run: this.run, pending: this.pending };
+    return { run: { runId: "cumulative", status: "done", results: this.results }, pending: this.pending };
   }
 
   async startRun(variant: AblationVariant): Promise<void> {
@@ -30,7 +30,7 @@ export class EvalSession {
     this.pending = true;
     try {
       const res = await this.api.triggerAblation(this.demoId, { variant });
-      this.run = res.run;
+      this.results = [...this.results, ...res.run.results];
     } finally {
       this.pending = false;
     }

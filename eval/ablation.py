@@ -29,8 +29,19 @@ class ComponentSwap(AblationVariable):
         return f"swap:{self.component_id}->{self.component_id}@{self.replacement_version}"
 
     def apply(self, recipe: dict) -> dict:
+        if self.replacement_id is None and self.replacement_version is None:
+            raise ValueError(
+                f"ComponentSwap for {self.component_id!r} needs replacement_id "
+                "or replacement_version"
+            )
         variant = _copy_recipe(recipe)
         new_id = self.replacement_id or self.component_id
+        if new_id != self.component_id and any(
+            c["id"] == new_id for c in variant["components"]
+        ):
+            raise ValueError(
+                f"replacement component {new_id!r} already exists in recipe"
+            )
         for component in variant["components"]:
             if component["id"] != self.component_id:
                 continue

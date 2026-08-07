@@ -277,6 +277,7 @@
         }
       },
       "Recipe": {
+        "description": "配方结构。权威单一来源是 contracts/recipe-schema.json（与 assembler/Python 侧共享）；本处为 OpenAPI 内联副本，须与之一致，见 tests/test_openapi_recipe_sync.py。",
         "type": "object",
         "required": ["components", "connections", "parameters"],
         "additionalProperties": false,

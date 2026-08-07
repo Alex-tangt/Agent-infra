@@ -107,18 +107,34 @@
   background: #eaeef2;
 }
 
-.span-list ul,
-.ablation-results ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.ablation-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
 }
 
-.span-list li,
-.ablation-results li {
+.ablation-result {
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #f6f8fa;
   font-size: 13px;
-  padding: 4px 0;
-  border-bottom: 1px dashed #eaeef2;
+}
+
+.result-variant {
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.result-kind {
+  color: #57606a;
+  margin: 0 0 6px;
+}
+
+.result-scores,
+.result-spans {
+  margin: 2px 0;
+  color: #24292f;
 }
 
 .span-component,
@@ -129,6 +145,15 @@
 .span-tokens,
 .span-duration {
   color: #57606a;
+}
+
+.component-error {
+  color: #cf222e;
+  font-weight: 700;
+}
+
+.component-row[data-has-errors="true"] {
+  background: #fff5f5;
 }
 
 .ablation-trigger {

@@ -13,6 +13,8 @@ export interface ComponentTelemetry {
   totalDurationMs: number;
   // 该组件全部 span 的 token 汇总；没有任何 span 携带 tokenUsage 时为 null。
   tokens: TokenUsage | null;
+  // 该组件是否存在失败调用（status === "error"）——监测作为过程数据，失败可见性重要。
+  hasErrors: boolean;
 }
 
 // 按组件粒度聚合 spans：调用次数累加、耗时累加、token 累加，输出按组件名排序。
@@ -27,12 +29,14 @@ export function aggregateTelemetry(spans: TelemetrySpan[]): ComponentTelemetry[]
         callCount: 0,
         totalDurationMs: 0,
         tokens: null,
+        hasErrors: false,
       };
       byComponent.set(span.componentId, agg);
     }
     if (!agg.operations.includes(span.operation)) agg.operations.push(span.operation);
     agg.callCount += 1;
     agg.totalDurationMs += span.durationMs;
+    if (span.status === "error") agg.hasErrors = true;
     if (span.tokenUsage) {
       agg.tokens = {
         input: (agg.tokens?.input ?? 0) + span.tokenUsage.input,
@@ -72,8 +76,8 @@ function renderComponentRows(components: ComponentTelemetry[]): string {
   <tbody>
     ${components
       .map(
-        (c) => `<tr class="component-row" data-component-id="${escapeHtml(c.componentId)}">
-  <td class="component-name">${escapeHtml(c.componentId)}</td>
+        (c) => `<tr class="component-row" data-component-id="${escapeHtml(c.componentId)}"${c.hasErrors ? ' data-has-errors="true"' : ""}>
+  <td class="component-name">${escapeHtml(c.componentId)}${c.hasErrors ? ' <span class="component-error">⚠</span>' : ""}</td>
   <td class="component-ops" data-gen-ai-operation-name="${escapeHtml(c.operations.join(", "))}">${escapeHtml(c.operations.join(", "))}</td>
   <td class="component-calls">${c.callCount}</td>
   <td class="component-duration">${c.totalDurationMs}ms</td>

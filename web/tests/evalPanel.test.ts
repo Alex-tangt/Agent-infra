@@ -34,7 +34,22 @@ test("eval session exposes pending and ignores re-entrant starts", async () => {
   await inFlight;
 
   assert.equal(session.getState().pending, false);
-  assert.equal(session.getState().run?.runId, "r9");
+  assert.equal(session.getState().run?.status, "done");
+});
+
+test("eval session accumulates multiple variant runs for side-by-side comparison", async () => {
+  const api = new MockDemoApi();
+  const session = new EvalSession("demo-x", api);
+
+  await session.startRun({ kind: "swap", target: "tools", description: "换掉工具组件" });
+  await session.startRun({ kind: "override", target: "temperature", description: "温度降到 0" });
+
+  const state = session.getState();
+  assert.equal(state.run!.results.length, 2);
+  assert.deepEqual(
+    state.run!.results.map((r) => r.variant.description),
+    ["换掉工具组件", "温度降到 0"],
+  );
 });
 
 test("eval session triggers ablation via mock runner and stores the run", async () => {

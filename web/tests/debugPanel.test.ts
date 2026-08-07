@@ -184,3 +184,15 @@ test("debug panel renders mock demo telemetry without a real backend", async () 
   assert.match(html, /512/);
   assert.match(html, /128/);
 });
+
+test("aggregateTelemetry flags components with error spans", () => {
+  const spans = [
+    { id: "s1", componentId: "model", operation: "chat", startTimeMs: 0, durationMs: 10, tokenUsage: null, status: "error" },
+    { id: "s2", componentId: "tools", operation: "search", startTimeMs: 0, durationMs: 10, tokenUsage: null, status: "ok" },
+  ];
+
+  const rows = aggregateTelemetry(spans);
+
+  assert.equal(rows.find((r) => r.componentId === "model")!.hasErrors, true);
+  assert.equal(rows.find((r) => r.componentId === "tools")!.hasErrors, false);
+});
