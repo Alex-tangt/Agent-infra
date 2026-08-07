@@ -4,7 +4,7 @@ import { ChatSession } from "./panels/chatPanel.ts";
 import { EvalSession } from "./panels/evalPanel.ts";
 import { AssemblerSession, MockAssembler } from "./panels/assemblerPanel.ts";
 import type { AblationKind } from "./api/contract.ts";
-import { MockDemoApi } from "./mockDemoApi.ts";
+import { createDemoApi } from "./api/createDemoApi.ts";
 
 const DEMO_ID = "demo-1";
 
@@ -14,31 +14,10 @@ function mount(html: string): void {
 }
 
 async function main(): Promise<void> {
-  const api = new MockDemoApi();
-  api.setTelemetry(DEMO_ID, {
-    spans: [
-      {
-        id: "s1",
-        componentId: "model",
-        operation: "chat",
-        startTimeMs: Date.now(),
-        durationMs: 120,
-        tokenUsage: { input: 512, output: 128 },
-        status: "ok",
-      },
-      {
-        id: "s2",
-        componentId: "tools",
-        operation: "search",
-        startTimeMs: Date.now(),
-        durationMs: 34,
-        tokenUsage: null,
-        status: "ok",
-      },
-    ],
-  });
+  // 端到端链路默认连 Python demo server（DemoApiClient）；`?mock=1` 回退骨架假后端。
+  const api = createDemoApi();
 
-  // 组装器联动（U5）：需求→配方→一键生成 demo；骨架阶段用 mock 组装器 + mock 接线引擎。
+  // 组装器联动（U5）：需求→配方→一键生成 demo；配方产出交给真实接线引擎（或 mock）落地运行。
   const assemblerSession = new AssemblerSession(DEMO_ID, new MockAssembler(), api);
 
   const state: AppState = {
@@ -55,7 +34,7 @@ async function main(): Promise<void> {
     mount(renderApp(state));
   }
 
-  // 联动监测（U3 占位）：每轮对话结束后重新拉取遥测，刷新调试面板。
+  // 联动监测：每轮对话结束后重新拉取真实遥测流，刷新调试面板。
   const session = new ChatSession(DEMO_ID, api, async () => {
     const telemetry = await api.getTelemetry(DEMO_ID);
     state.debug = { spans: telemetry.spans };
