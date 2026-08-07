@@ -11,7 +11,7 @@ class Recipe:
     parameters: dict = field(default_factory=dict)
 
 
-def validate(recipe: dict, registry: dict[str, ComponentSpec] | None = None) -> Recipe:
+def validate(recipe: dict, registry: dict[tuple[str, str], ComponentSpec] | None = None) -> Recipe:
     if registry is None:
         raise ValueError("registry is required for recipe validation")
 
@@ -22,13 +22,10 @@ def validate(recipe: dict, registry: dict[str, ComponentSpec] | None = None) -> 
         version = component.get("version")
         if not component_id or not version:
             raise ValueError(f"component must declare id and version: {component}")
-        spec = registry.get(component_id)
+        spec = registry.get((component_id, version))
         if spec is None:
-            raise ValueError(f"unknown component: {component_id}")
-        if spec.version != version:
             raise ValueError(
-                f"unknown version {version!r} for component {component_id!r} "
-                f"(registry has {spec.version!r})"
+                f"unknown component: {component_id}@{version} not in registry"
             )
 
     for connection in recipe.get("connections", []):
@@ -39,7 +36,10 @@ def validate(recipe: dict, registry: dict[str, ComponentSpec] | None = None) -> 
     for component_id, params in recipe.get("parameters", {}).items():
         if component_id not in component_ids:
             raise ValueError(f"parameter for unknown component: {component_id}")
-        spec = registry[component_id]
+        version = next(
+            c["version"] for c in components if c.get("id") == component_id
+        )
+        spec = registry[(component_id, version)]
         for name, value in params.items():
             param_spec = spec.params.get(name)
             if param_spec is None:

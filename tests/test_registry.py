@@ -1,6 +1,6 @@
 import pytest
 
-from components import ComponentSpec, ParamSpec, Port, register, get, reset
+from components import ComponentSpec, ParamSpec, Port, register, get_component, reset
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +25,7 @@ def make_spec():
 def test_register_and_get_by_id_version():
     register(make_spec())
 
-    spec = get("model-gpt4", "1.0")
+    spec = get_component("model-gpt4", "1.0")
 
     assert spec.id == "model-gpt4"
     assert spec.version == "1.0"
@@ -36,14 +36,14 @@ def test_register_and_get_by_id_version():
 
 def test_get_unknown_id_raises():
     with pytest.raises(KeyError, match="model-gpt4"):
-        get("model-gpt4", "1.0")
+        get_component("model-gpt4", "1.0")
 
 
 def test_get_unknown_version_raises():
     register(make_spec())
 
     with pytest.raises(KeyError, match="9.9"):
-        get("model-gpt4", "9.9")
+        get_component("model-gpt4", "9.9")
 
 
 def test_register_same_id_different_versions():
@@ -58,8 +58,8 @@ def test_register_same_id_different_versions():
         )
     )
 
-    assert get("model-gpt4", "1.0").version == "1.0"
-    assert get("model-gpt4", "2.0").version == "2.0"
+    assert get_component("model-gpt4", "1.0").version == "1.0"
+    assert get_component("model-gpt4", "2.0").version == "2.0"
 
 
 def test_duplicate_register_same_version_raises():

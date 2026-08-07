@@ -1,19 +1,21 @@
 import pytest
 
-from components import ComponentSpec, ParamSpec
+from components import ComponentSpec, ParamSpec, Port, register
 from recipe import validate
 
 REGISTRY = {
-    "model-gpt4": ComponentSpec(
+    ("model-gpt4", "1.0"): ComponentSpec(
         id="model-gpt4",
         version="1.0",
+        inputs=[Port(name="messages", type="MessageList")],
+        outputs=[Port(name="response", type="MessageList")],
         params={
             "temperature": ParamSpec(type="number", min=0.0, max=2.0, default=0.7),
             "model": ParamSpec(type="string", enum=["gpt-4", "gpt-4o"], default="gpt-4"),
         },
     ),
-    "context-window": ComponentSpec(id="context-window", version="1.0"),
-    "tool-caller": ComponentSpec(
+    ("context-window", "1.0"): ComponentSpec(id="context-window", version="1.0"),
+    ("tool-caller", "1.0"): ComponentSpec(
         id="tool-caller",
         version="1.0",
         params={"max_iterations": ParamSpec(type="number", min=1, max=10, default=3)},
@@ -61,6 +63,19 @@ def test_unknown_component_id_is_rejected():
         validate(recipe, registry=REGISTRY)
 
 
+def test_unknown_component_version_is_rejected():
+    recipe = {
+        "components": [
+            {"id": "model-gpt4", "version": "9.9"},
+        ],
+        "connections": [],
+        "parameters": {},
+    }
+
+    with pytest.raises(ValueError, match="unknown component"):
+        validate(recipe, registry=REGISTRY)
+
+
 def test_component_missing_version_is_rejected():
     recipe = {
         "components": [
@@ -71,19 +86,6 @@ def test_component_missing_version_is_rejected():
     }
 
     with pytest.raises(ValueError, match="id and version"):
-        validate(recipe, registry=REGISTRY)
-
-
-def test_unknown_component_version_is_rejected():
-    recipe = {
-        "components": [
-            {"id": "model-gpt4", "version": "9.9"},
-        ],
-        "connections": [],
-        "parameters": {},
-    }
-
-    with pytest.raises(ValueError, match="unknown version"):
         validate(recipe, registry=REGISTRY)
 
 

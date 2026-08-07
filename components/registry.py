@@ -14,12 +14,12 @@ def register(spec: ComponentSpec) -> None:
     _registry[key] = spec
 
 
-def get(component_id: str, version: str) -> ComponentSpec:
+def get_component(component_id: str, version: str) -> ComponentSpec:
     key = (component_id, version)
     if key not in _registry:
         raise KeyError(f"component {component_id}@{version} not found in registry")
     return _registry[key]
 
 
-def snapshot() -> dict[str, ComponentSpec]:
-    return {f"{cid}@{version}": spec for (cid, version), spec in _registry.items()}
+def as_dict() -> dict[tuple[str, str], ComponentSpec]:
+    return dict(_registry)
