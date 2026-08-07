@@ -102,6 +102,31 @@ test("triggerAblation POSTs JSON to /demo/{id}/ablations and returns run", async
   });
 });
 
+test("generateDemo POSTs the recipe to /demo/{id}/generate", async () => {
+  const captures: Captured[] = [];
+  const recipe = {
+    name: "weather-agent",
+    components: [
+      { id: "context-window", version: "1.0" },
+      { id: "model-openai", version: "1.0" },
+    ],
+    connections: [{ from: "context-window", to: "model-openai" }],
+    parameters: {},
+  };
+  const client = new DemoApiClient(
+    "http://localhost:8000",
+    mockFetcher(captures, { demoId: "demo-x", status: "done" }),
+  );
+
+  const res = await client.generateDemo("demo-x", { recipe });
+
+  assert.equal(res.status, "done");
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0]!.url, "http://localhost:8000/demo/demo-x/generate");
+  assert.equal(captures[0]!.init.method, "POST");
+  assert.deepEqual(JSON.parse(String(captures[0]!.init.body)), { recipe });
+});
+
 test("non-ok response throws", async () => {
   const client = new DemoApiClient("http://localhost:8000", async () => {
     return new Response("boom", { status: 500 });
@@ -116,4 +141,5 @@ test("DemoApiClient satisfies the DemoApi seam (OTel-backed backend drops in)", 
   assert.equal(typeof client.sendChat, "function");
   assert.equal(typeof client.getTelemetry, "function");
   assert.equal(typeof client.triggerAblation, "function");
+  assert.equal(typeof client.generateDemo, "function");
 });

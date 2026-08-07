@@ -3,6 +3,8 @@ import type {
   AblationResponse,
   ChatMessage,
   ChatReply,
+  GenerateDemoRequest,
+  GenerateDemoResponse,
   TelemetryResponse,
 } from "./api/contract.ts";
 
@@ -11,6 +13,7 @@ export interface DemoApi {
   sendChat(demoId: string, messages: ChatMessage[]): Promise<ChatReply>;
   getTelemetry(demoId: string): Promise<TelemetryResponse>;
   triggerAblation(demoId: string, request: AblationRequest): Promise<AblationResponse>;
+  generateDemo(demoId: string, request: GenerateDemoRequest): Promise<GenerateDemoResponse>;
 }
 
 // 内存假后端：骨架独立运行 / 测试时替代 Python demo。
@@ -48,6 +51,18 @@ export class MockDemoApi implements DemoApi {
           },
         ],
       },
+    };
+  }
+
+  // mock 接线引擎入口：接受配方即返回成功，供骨架独立运行 / 测试替代真实后端。
+  async generateDemo(
+    demoId: string,
+    request: GenerateDemoRequest,
+  ): Promise<GenerateDemoResponse> {
+    return {
+      demoId,
+      status: "done",
+      message: `mock 接线引擎已接受配方（${request.recipe.components.length} 个组件）`,
     };
   }
 }

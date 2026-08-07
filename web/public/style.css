@@ -143,3 +143,79 @@
 .result-scores {
   color: #57606a;
 }
+
+.assembler-requirement,
+.assembler-json {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.assembler-requirement input,
+.assembler-json textarea {
+  padding: 6px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.assembler-requirement button,
+.assembler-json button,
+.demo-generate button {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  cursor: pointer;
+}
+
+.assembler-requirement button:hover,
+.assembler-json button:hover,
+.demo-generate button:hover {
+  background: #eaeef2;
+}
+
+.assembler-error {
+  color: #cf222e;
+  font-size: 13px;
+}
+
+.demo-status {
+  color: #1a7f37;
+  font-size: 13px;
+}
+
+.recipe-view {
+  border-top: 1px dashed #eaeef2;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.recipe-view h3 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+  color: #57606a;
+}
+
+.recipe-components,
+.recipe-connections,
+.recipe-parameters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recipe-component,
+.recipe-connection,
+.recipe-parameter {
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed #eaeef2;
+}
+
+.recipe-name {
+  font-weight: 600;
+  margin: 0 0 4px;
+}

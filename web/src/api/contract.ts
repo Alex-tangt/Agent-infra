@@ -64,8 +64,38 @@ export interface AblationResponse {
   run: AblationRun;
 }
 
+export interface ComponentReference {
+  id: string;
+  version: string;
+}
+
+export interface Connection {
+  from: string;
+  to: string;
+}
+
+export interface Recipe {
+  name?: string;
+  components: ComponentReference[];
+  connections: Connection[];
+  parameters: Record<string, Record<string, unknown>>;
+}
+
+export interface GenerateDemoRequest {
+  recipe: Recipe;
+}
+
+export type GenerateDemoStatus = "accepted" | "running" | "done" | "failed";
+
+export interface GenerateDemoResponse {
+  demoId: string;
+  status: GenerateDemoStatus;
+  message?: string;
+}
+
 export const endpoints = {
   chat: (demoId: string) => `/demo/${demoId}/chat`,
   telemetry: (demoId: string) => `/demo/${demoId}/telemetry`,
   ablation: (demoId: string) => `/demo/${demoId}/ablations`,
+  generateDemo: (demoId: string) => `/demo/${demoId}/generate`,
 } as const;

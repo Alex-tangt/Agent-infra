@@ -4,11 +4,14 @@ import { renderDebugPanel } from "./panels/debugPanel.ts";
 import type { DebugPanelState } from "./panels/debugPanel.ts";
 import { renderEvalPanel } from "./panels/evalPanel.ts";
 import type { EvalPanelState } from "./panels/evalPanel.ts";
+import { renderAssemblerPanel } from "./panels/assemblerPanel.ts";
+import type { AssemblerPanelState } from "./panels/assemblerPanel.ts";
 
 export interface AppState {
   chat: ChatPanelState;
   debug: DebugPanelState;
   eval: EvalPanelState;
+  assembler: AssemblerPanelState;
 }
 
 export function renderApp(state: AppState): string {
@@ -18,6 +21,7 @@ export function renderApp(state: AppState): string {
     ${renderChatPanel(state.chat)}
     ${renderDebugPanel(state.debug)}
     ${renderEvalPanel(state.eval)}
+    ${renderAssemblerPanel(state.assembler)}
   </div>
 </main>`;
 }

@@ -4,6 +4,8 @@ import type {
   AblationResponse,
   ChatMessage,
   ChatReply,
+  GenerateDemoRequest,
+  GenerateDemoResponse,
   TelemetryResponse,
 } from "./contract.ts";
 
@@ -41,6 +43,14 @@ export class DemoApiClient {
 
   triggerAblation(demoId: string, request: AblationRequest): Promise<AblationResponse> {
     return this.request<AblationResponse>(endpoints.ablation(demoId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+  }
+
+  generateDemo(demoId: string, request: GenerateDemoRequest): Promise<GenerateDemoResponse> {
+    return this.request<GenerateDemoResponse>(endpoints.generateDemo(demoId), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(request),

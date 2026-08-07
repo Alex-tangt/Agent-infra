@@ -90,6 +90,37 @@
           }
         }
       }
+    },
+    "/demo/{demoId}/generate": {
+      "post": {
+        "summary": "用配方生成 demo 并运行（接线引擎入口）",
+        "parameters": [
+          {
+            "name": "demoId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateDemoRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "demo 生成结果",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GenerateDemoResponse" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -225,6 +256,66 @@
         "required": ["run"],
         "properties": {
           "run": { "$ref": "#/components/schemas/AblationRun" }
+        }
+      },
+      "ComponentReference": {
+        "type": "object",
+        "required": ["id", "version"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      },
+      "Connection": {
+        "type": "object",
+        "required": ["from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" }
+        }
+      },
+      "Recipe": {
+        "type": "object",
+        "required": ["components", "connections", "parameters"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "components": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ComponentReference" }
+          },
+          "connections": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Connection" }
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "GenerateDemoRequest": {
+        "type": "object",
+        "required": ["recipe"],
+        "properties": {
+          "recipe": { "$ref": "#/components/schemas/Recipe" }
+        }
+      },
+      "GenerateDemoResponse": {
+        "type": "object",
+        "required": ["demoId", "status"],
+        "properties": {
+          "demoId": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["accepted", "running", "done", "failed"]
+          },
+          "message": { "type": "string" }
         }
       }
     }

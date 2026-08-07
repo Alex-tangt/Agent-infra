@@ -14,3 +14,7 @@ test("contract: telemetry endpoint is /demo/{id}/telemetry", () => {
 test("contract: ablation endpoint is /demo/{id}/ablations", () => {
   assert.equal(endpoints.ablation("demo-x"), "/demo/demo-x/ablations");
 });
+
+test("contract: generate-demo endpoint is /demo/{id}/generate", () => {
+  assert.equal(endpoints.generateDemo("demo-x"), "/demo/demo-x/generate");
+});

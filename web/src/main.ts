@@ -2,6 +2,7 @@ import { renderApp } from "./app.ts";
 import type { AppState } from "./app.ts";
 import { ChatSession } from "./panels/chatPanel.ts";
 import { EvalSession } from "./panels/evalPanel.ts";
+import { AssemblerSession, MockAssembler } from "./panels/assemblerPanel.ts";
 import type { AblationKind } from "./api/contract.ts";
 import { MockDemoApi } from "./mockDemoApi.ts";
 
@@ -37,15 +38,20 @@ async function main(): Promise<void> {
     ],
   });
 
+  // 组装器联动（U5）：需求→配方→一键生成 demo；骨架阶段用 mock 组装器 + mock 接线引擎。
+  const assemblerSession = new AssemblerSession(DEMO_ID, new MockAssembler(), api);
+
   const state: AppState = {
     chat: { messages: [] },
     debug: { spans: (await api.getTelemetry(DEMO_ID)).spans },
     eval: { run: null },
+    assembler: assemblerSession.getState(),
   };
 
   function refresh(): void {
     state.chat = session.getState();
     state.eval = evalSession.getState();
+    state.assembler = assemblerSession.getState();
     mount(renderApp(state));
   }
 
@@ -86,6 +92,34 @@ async function main(): Promise<void> {
           target: variantTarget,
           description: descEl?.value.trim() ?? "",
         })
+        .then(() => refresh())
+        .catch(() => refresh());
+      refresh();
+      return;
+    }
+    if (target.classList.contains("assembler-requirement")) {
+      event.preventDefault();
+      const input = target.elements.namedItem("requirement") as HTMLInputElement | null;
+      const text = input?.value ?? "";
+      assemblerSession.setRequirement(text);
+      void assemblerSession
+        .generate()
+        .then(() => refresh())
+        .catch(() => refresh());
+      refresh();
+      return;
+    }
+    if (target.classList.contains("assembler-json")) {
+      event.preventDefault();
+      const jsonEl = target.elements.namedItem("json") as HTMLTextAreaElement | null;
+      assemblerSession.loadJson(jsonEl?.value ?? "");
+      refresh();
+      return;
+    }
+    if (target.classList.contains("demo-generate")) {
+      event.preventDefault();
+      void assemblerSession
+        .generateDemo()
         .then(() => refresh())
         .catch(() => refresh());
       refresh();
