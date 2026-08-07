@@ -1,6 +1,8 @@
 import { renderApp } from "./app.ts";
 import type { AppState } from "./app.ts";
 import { ChatSession } from "./panels/chatPanel.ts";
+import { EvalSession } from "./panels/evalPanel.ts";
+import type { AblationKind } from "./api/contract.ts";
 import { MockDemoApi } from "./mockDemoApi.ts";
 
 const DEMO_ID = "demo-1";
@@ -43,6 +45,7 @@ async function main(): Promise<void> {
 
   function refresh(): void {
     state.chat = session.getState();
+    state.eval = evalSession.getState();
     mount(renderApp(state));
   }
 
@@ -53,18 +56,40 @@ async function main(): Promise<void> {
     refresh();
   });
 
+  const evalSession = new EvalSession(DEMO_ID, api);
+
   refresh();
 
   const app = document.getElementById("app");
   app?.addEventListener("submit", (event) => {
     const target = event.target as HTMLFormElement | null;
-    if (!target || !target.classList.contains("chat-input")) return;
-    event.preventDefault();
-    const input = target.elements.namedItem("text") as HTMLInputElement | null;
-    const text = input?.value ?? "";
-    if (input) input.value = "";
-    void session.sendMessage(text).catch(() => refresh());
-    refresh();
+    if (!target) return;
+    if (target.classList.contains("chat-input")) {
+      event.preventDefault();
+      const input = target.elements.namedItem("text") as HTMLInputElement | null;
+      const text = input?.value ?? "";
+      if (input) input.value = "";
+      void session.sendMessage(text).catch(() => refresh());
+      refresh();
+      return;
+    }
+    if (target.classList.contains("ablation-form")) {
+      event.preventDefault();
+      const kind = target.elements.namedItem("kind") as HTMLSelectElement | null;
+      const targetEl = target.elements.namedItem("target") as HTMLInputElement | null;
+      const descEl = target.elements.namedItem("description") as HTMLInputElement | null;
+      const variantTarget = targetEl?.value.trim() ?? "";
+      if (variantTarget === "") return;
+      void evalSession
+        .startRun({
+          kind: (kind?.value as AblationKind) ?? "swap",
+          target: variantTarget,
+          description: descEl?.value.trim() ?? "",
+        })
+        .then(() => refresh())
+        .catch(() => refresh());
+      refresh();
+    }
   });
 }
 
