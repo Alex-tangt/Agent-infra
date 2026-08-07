@@ -28,14 +28,33 @@ _TEMPLATES: dict[str, _Template] = {
         ],
     ),
     "tool-caller": _Template(
-        import_line="from components.tools import register_tool_caller, ToolCaller",
+        import_line="from components.tools import register_tool_caller, ToolCaller, Tool",
         register_call="register_tool_caller()",
         class_name="ToolCaller",
         steps=lambda instance, source, output: [
             f"{output} = {instance}.call({source})",
         ],
     ),
+    "agent-single": _Template(
+        import_line="from components.agent import register_agent, Agent",
+        register_call="register_agent()",
+        class_name="Agent",
+        steps=lambda instance, source, output: [
+            f"{output} = {instance}.run({source})",
+        ],
+    ),
 }
+
+_AGENT_COMPONENTS = {"agent-single"}
+_ROLE_BY_COMPONENT = {
+    "context-window": "context",
+    "model-openai": "model",
+    "tool-caller": "tools",
+}
+
+
+def _is_agent_component(component_id: str) -> bool:
+    return component_id in _AGENT_COMPONENTS
 
 
 def _sanitize(component_id: str) -> str:
@@ -54,12 +73,79 @@ def _literal(value: object) -> str:
     return repr(value)
 
 
-def _construct(entry: dict, spec, parameters: dict) -> str:
+def _construct(entry: dict, spec, parameters: dict, connections: list) -> str:
+    cid = entry["id"]
+    if _is_agent_component(cid):
+        return _construct_agent(entry, spec, parameters, _agent_parts(cid, connections))
     params = {name: spec.params[name].default for name in spec.params}
     params.update(parameters.get(entry["id"], {}))
-    kwargs = ", ".join(f"{name}={_literal(value)}" for name, value in params.items())
     template = _TEMPLATES[entry["id"]]
+    kwargs = ", ".join(
+        f"{name}={_render_param_value(entry['id'], name, value)}"
+        for name, value in params.items()
+    )
     return f"{_instance_var(entry['id'])} = {template.class_name}({kwargs})"
+
+
+def _render_param_value(component_id: str, name: str, value: object) -> str:
+    if component_id == "tool-caller" and name == "tools":
+        return _render_tools(value)
+    return _literal(value)
+
+
+def _render_tools(tools: list) -> str:
+    rendered = []
+    for tool in tools:
+        parts = [
+            f"name={_literal(tool.get('name', ''))}",
+            f"description={_literal(tool.get('description', ''))}",
+            f"parameters={_literal(tool.get('parameters', {}))}",
+        ]
+        func = tool.get("func")
+        if func is not None:
+            parts.append(f"func=({func})")
+        rendered.append(f"Tool({', '.join(parts)})")
+    return "[" + ", ".join(rendered) + "]"
+
+
+def _agent_parts(component_id: str, connections: list) -> dict:
+    parts = {}
+    for connection in connections:
+        if connection["to"] != component_id:
+            continue
+        part_id = connection["from"]
+        role = _ROLE_BY_COMPONENT.get(part_id)
+        if role is None:
+            raise ValueError(
+                f"component {part_id!r} cannot be wired as a part of agent "
+                f"{component_id!r}; expected one of {sorted(_ROLE_BY_COMPONENT)}"
+            )
+        if role in parts:
+            raise ValueError(
+                f"agent {component_id!r} receives multiple {role!r} parts"
+            )
+        parts[role] = part_id
+    missing = sorted(set(("model", "context", "tools")) - set(parts))
+    if missing:
+        raise ValueError(
+            f"agent {component_id!r} is missing parts {missing}; "
+            "wire model-openai, context-window and tool-caller into it"
+        )
+    return parts
+
+
+def _construct_agent(entry: dict, spec, parameters: dict, parts: dict) -> str:
+    cid = entry["id"]
+    params = {name: spec.params[name].default for name in spec.params}
+    params.update(parameters.get(entry["id"], {}))
+    kwargs = (
+        f"model={_instance_var(parts['model'])}, "
+        f"context={_instance_var(parts['context'])}, "
+        f"tools={_instance_var(parts['tools'])}"
+    )
+    for name, value in params.items():
+        kwargs += f", {name}={_literal(value)}"
+    return f"{_instance_var(entry['id'])} = Agent({kwargs})"
 
 
 def _topological_order(components: list, connections: list) -> list:
@@ -98,7 +184,19 @@ def _chain(recipe: Recipe) -> list:
         connected.add(connection["to"])
     if not connected:
         return order
-    return [cid for cid in order if cid in connected]
+    chain = [cid for cid in order if cid in connected]
+    return [cid for cid in chain if not _is_agent_part(cid, recipe)]
+
+
+def _is_agent_part(component_id: str, recipe: Recipe) -> bool:
+    if _is_agent_component(component_id):
+        return False
+    targets = [
+        connection["to"]
+        for connection in recipe.connections
+        if connection["from"] == component_id
+    ]
+    return bool(targets) and all(_is_agent_component(target) for target in targets)
 
 
 def _chain_steps(recipe: Recipe, chain: list) -> tuple[list, str]:
@@ -108,11 +206,14 @@ def _chain_steps(recipe: Recipe, chain: list) -> tuple[list, str]:
         instance = _instance_var(cid)
         output = _output_var(cid)
         template = _TEMPLATES[cid]
-        sources = [
-            connection["from"]
-            for connection in recipe.connections
-            if connection["to"] == cid
-        ]
+        if _is_agent_component(cid):
+            sources = []
+        else:
+            sources = [
+                connection["from"]
+                for connection in recipe.connections
+                if connection["to"] == cid
+            ]
         if len(sources) > 1:
             raise ValueError(
                 f"component {cid!r} receives multiple connections; "
@@ -133,16 +234,18 @@ def _render(recipe: Recipe, specs: dict) -> str:
     import_lines = []
     register_lines = []
     construct_lines = []
+    by_id = {entry["id"]: entry for entry in recipe.components}
     seen = set()
-    for entry in recipe.components:
-        cid = entry["id"]
+    for cid in _topological_order(recipe.components, recipe.connections):
         if cid in seen:
             continue
         seen.add(cid)
         template = _TEMPLATES[cid]
         import_lines.append(template.import_line)
         register_lines.append(template.register_call)
-        construct_lines.append(_construct(entry, specs[cid], recipe.parameters))
+        construct_lines.append(
+            _construct(by_id[cid], specs[cid], recipe.parameters, recipe.connections)
+        )
 
     lines.extend(import_lines)
     lines.append("")
@@ -161,6 +264,8 @@ def _render(recipe: Recipe, specs: dict) -> str:
 
 def _check_contract(connection: dict, specs: dict) -> None:
     from_id, to_id = connection["from"], connection["to"]
+    if _is_agent_component(to_id):
+        return
     output_types = [p.type for p in specs[from_id].outputs]
     input_types = [p.type for p in specs[to_id].inputs]
     if not set(output_types) & set(input_types):
