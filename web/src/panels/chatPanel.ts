@@ -1,9 +1,8 @@
 import type { ChatMessage, ChatReply } from "../api/contract.ts";
+import type { DemoApi } from "../mockDemoApi.ts";
 
-// 聊天面板依赖的接口契约（测试接缝）：MockDemoApi 与 DemoApiClient 均满足。
-export interface ChatApi {
-  sendChat(demoId: string, messages: ChatMessage[]): Promise<ChatReply>;
-}
+// 聊天面板依赖的接口契约（测试接缝）：与 DemoApi 共享，MockDemoApi 与 DemoApiClient 均满足。
+export type ChatApi = Pick<DemoApi, "sendChat">;
 
 // 一个对话轮次结束时的通知（U3 调试面板用它触发遥测刷新）。
 export type ChatTurnListener = (messages: ChatMessage[]) => void;

@@ -44,6 +44,21 @@ test("conversion: a plain chat requirement keeps the base single-agent core", ()
   assert.equal(ids.includes("tool-caller"), false);
 });
 
+test("conversion: agent requirement wires every part into agent-single (composition edge)", () => {
+  const recipe = requirementToRecipe("会搜索的聊天 agent", DEFAULT_CATALOG);
+
+  const agentTargets = recipe.connections.filter((c) => c.to === "agent-single");
+  assert.ok(agentTargets.length >= 1, "agent-single should have incoming connections");
+  const sourceIds = agentTargets.map((c) => c.from).sort();
+  const partIds = recipe.components
+    .map((c) => c.id)
+    .filter((id) => id !== "agent-single")
+    .sort();
+  assert.deepEqual(sourceIds, partIds, "every part must wire into agent-single");
+  const serialEdges = recipe.connections.filter((c) => c.to !== "agent-single");
+  assert.equal(serialEdges.length, 0, "agent composition should not leave serial edges");
+});
+
 test("conversion: model hint in the requirement becomes a param override", () => {
   const recipe = requirementToRecipe("用 gpt-4o 做一个聊天助手", DEFAULT_CATALOG);
 

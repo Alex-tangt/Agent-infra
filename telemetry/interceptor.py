@@ -38,10 +38,12 @@ class TelemetryInterceptor:
         self._spans: list[TelemetrySpan] = []
         self._stack: list[TelemetrySpan] = []
         self._call_counts: dict[str, int] = defaultdict(int)
+        self._wrapped: list[tuple[object, str, object, object]] = []
 
     def wrap_component(self, component_id: str, component, call_name: str):
         original = getattr(component, call_name)
         interceptor = self
+        original_on_usage = getattr(component, "on_usage", None)
 
         def wrapped(*args, **kwargs):
             return interceptor._observe_call(
@@ -51,14 +53,23 @@ class TelemetryInterceptor:
         setattr(component, call_name, wrapped)
         if hasattr(component, "on_usage"):
             component.on_usage = self.on_usage
+        self._wrapped.append((component, call_name, original, original_on_usage))
         return wrapped
 
+    def unwrap_all(self) -> None:
+        for component, call_name, original, original_on_usage in self._wrapped:
+            setattr(component, call_name, original)
+            if original_on_usage is not None:
+                component.on_usage = original_on_usage
+        self._wrapped.clear()
+
     def on_usage(self, component_id, usage) -> None:
-        span = self._stack[-1] if self._stack else None
-        if span is not None:
-            span.input_tokens = usage.prompt_tokens
-            span.output_tokens = usage.completion_tokens
-            span.total_tokens = usage.total_tokens
+        for span in reversed(self._stack):
+            if span.component_id == component_id:
+                span.input_tokens = usage.prompt_tokens
+                span.output_tokens = usage.completion_tokens
+                span.total_tokens = usage.total_tokens
+                break
         if self._external_on_usage is not None:
             self._external_on_usage(component_id, usage)
 

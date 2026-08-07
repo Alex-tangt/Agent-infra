@@ -1,5 +1,4 @@
 import { Type, type TObject } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 import { DEFAULT_CATALOG, type ComponentCatalog } from "./catalog.ts";
 import type { Recipe } from "./recipe.ts";
@@ -34,6 +33,9 @@ const connectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
+// pi 工具入参描述（TypeBox）：描述"模型必须产出的配方形状"给 pi 的 structured-output 约束用。
+// 注意：这不是校验的单一来源——结构校验由 schema.validateStructure 消费 contracts/recipe-schema.json。
+// 二者必须保持结构一致；本文件的声明是工具描述，契约定义以 recipe-schema.json 为准。
 export const RECIPE_PARAMS_SCHEMA: TObject = Type.Object(
   {
     name: Type.Optional(Type.String()),
@@ -61,18 +63,9 @@ function parseRaw(raw: string): unknown {
 export function constrainToRecipe(raw: string, catalog: ComponentCatalog): Recipe {
   const parsed = parseRaw(raw);
 
-  if (!Value.Check(RECIPE_PARAMS_SCHEMA, parsed)) {
-    const issues: string[] = [];
-    for (const error of Value.Errors(RECIPE_PARAMS_SCHEMA, parsed)) {
-      issues.push(`${error.path || "recipe"}: ${error.message}`);
-    }
-    throw new Error(
-      `structured output violates the recipe schema: ${issues.join("; ")}`,
-    );
-  }
+  // 结构校验的单一来源是 contracts/recipe-schema.json（见 schema.validateStructure）。
+  validateStructure(parsed);
   const recipe = parsed as unknown as Recipe;
-
-  validateStructure(recipe);
 
   const knownIds = new Set(recipe.components.map((c) => c.id));
   for (const component of recipe.components) {

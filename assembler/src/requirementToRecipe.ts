@@ -69,14 +69,18 @@ export function requirementToRecipe(
     components.push({ id: "agent-single", version: resolveVersion(catalog, "agent-single") });
   }
 
-  const connections: Recipe["connections"] = [
-    { from: "context-window", to: "model-openai" },
-  ];
-  if (wantsTools) {
-    connections.push({ from: "model-openai", to: "tool-caller" });
-  }
+  // 组合范式：装配 agent 时，各零件（context/model/tools）全部汇入 agent-single 作为 parts；
+  // 否则走串行链（context → model）。
+  const connections: Recipe["connections"] = wantsAgent
+    ? components
+        .filter((c) => c.id !== "agent-single")
+        .map((c) => ({ from: c.id, to: "agent-single" }))
+    : [{ from: "context-window", to: "model-openai" }];
 
   const parameters: Recipe["parameters"] = {};
+  if (wantsAgent) {
+    parameters["agent-single"] = {};
+  }
   const modelOverride = MODEL_SIGNALS.find(([signal]) => text.includes(signal));
   if (modelOverride) {
     parameters["model-openai"] = { model: modelOverride[1] };

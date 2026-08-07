@@ -56,10 +56,11 @@ async function main(): Promise<void> {
   refresh();
 
   const app = document.getElementById("app");
-  const form = app?.querySelector<HTMLFormElement>(".chat-input");
-  form?.addEventListener("submit", (event) => {
+  app?.addEventListener("submit", (event) => {
+    const target = event.target as HTMLFormElement | null;
+    if (!target || !target.classList.contains("chat-input")) return;
     event.preventDefault();
-    const input = form.elements.namedItem("text") as HTMLInputElement | null;
+    const input = target.elements.namedItem("text") as HTMLInputElement | null;
     const text = input?.value ?? "";
     if (input) input.value = "";
     void session.sendMessage(text).catch(() => refresh());

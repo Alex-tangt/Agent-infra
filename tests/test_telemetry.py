@@ -229,3 +229,32 @@ def test_telemetry_works_with_duck_typed_components_and_no_backend():
     assert generate_records[0]["gen_ai.usage.output_tokens"] == 2
     assert generate_records[0]["gen_ai.usage.total_tokens"] == 7
     assert json.dumps(records)
+
+
+def test_unwrap_restores_original_methods_and_on_usage():
+    model = OpenAIModel(client=FakeClient(reply="hi"), on_usage=lambda *_: None)
+    interceptor = TelemetryInterceptor(model)
+    original_on_usage = model.on_usage
+
+    interceptor.wrap_component("model-openai", model, "generate")
+    assert model.generate.__name__ == "wrapped"
+    assert model.on_usage.__self__ is interceptor
+
+    interceptor.unwrap_all()
+    assert model.generate.__name__ == "generate"
+    assert model.on_usage is original_on_usage
+
+
+def test_token_usage_attaches_to_matching_component_span():
+    model = _ReportingModel()
+    agent = Agent(model=model, context=_MinimalContext(), tools=_MinimalTools())
+    interceptor = TelemetryInterceptor(agent)
+    interceptor.wrap_component("model-openai", model, "generate")
+
+    interceptor.run("hi")
+
+    records = interceptor.records()
+    generate_records = [r for r in records if r["gen_ai.operation.name"] == "generate"]
+    assert generate_records[0]["gen_ai.usage.input_tokens"] == 5
+    run_records = [r for r in records if r["gen_ai.operation.name"] == "run"]
+    assert "gen_ai.usage.input_tokens" not in run_records[0]
