@@ -3,7 +3,9 @@ name = "agent-infra"
 version = "0.1.0"
 description = "从《深入理解AI Agent》提炼通用 agent 组件，构建可插拔、可组合的组件库"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai>=2.0",
+]
 
 [project.optional-dependencies]
 dev = [
