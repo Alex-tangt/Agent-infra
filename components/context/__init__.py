@@ -1,3 +1,4 @@
+from components.registry import register
 from components.types import ComponentSpec, ParamSpec, Port
 
 
@@ -41,7 +42,16 @@ SPEC = ComponentSpec(
     inputs=[Port(name="user_message", type="string")],
     outputs=[Port(name="messages", type="MessageList")],
     params={
-        "max_rounds": ParamSpec(type="number", min=1, default=5),
-        "strategy": ParamSpec(type="string", enum=["truncate"], default="truncate"),
+        "max_rounds": ParamSpec(type="integer", min=1, default=5),
+        "strategy": ParamSpec(
+            type="string",
+            enum=["truncate"],
+            default="truncate",
+        ),
     },
 )
+
+
+def register_context() -> ComponentSpec:
+    register(SPEC)
+    return SPEC

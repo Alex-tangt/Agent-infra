@@ -18,7 +18,7 @@ MODEL_SPEC = ComponentSpec(
     id="model-openai",
     version="1.0",
     inputs=[Port(name="messages", type="MessageList")],
-    outputs=[Port(name="response", type="MessageList")],
+    outputs=[Port(name="response", type="string")],
     params={
         "model": ParamSpec(type="string", enum=["gpt-4o-mini", "gpt-4o"], default="gpt-4o-mini"),
         "temperature": ParamSpec(type="number", min=0.0, max=2.0, default=0.7),
@@ -27,7 +27,7 @@ MODEL_SPEC = ComponentSpec(
 )
 
 
-def register_component() -> ComponentSpec:
+def register_model() -> ComponentSpec:
     register(MODEL_SPEC)
     return MODEL_SPEC
 
@@ -65,23 +65,9 @@ class OpenAIModel:
         return OpenAI(api_key=api_key)
 
     def _validate_params(self) -> None:
-        model_spec = MODEL_SPEC.params["model"]
-        if self.model not in model_spec.enum:
-            raise ValueError(f"unknown model {self.model!r}; choose from {model_spec.enum}")
-
-        temperature_spec = MODEL_SPEC.params["temperature"]
-        if self.temperature < temperature_spec.min or self.temperature > temperature_spec.max:
-            raise ValueError(
-                f"temperature must be within [{temperature_spec.min}, {temperature_spec.max}], "
-                f"got {self.temperature}"
-            )
-
-        max_tokens_spec = MODEL_SPEC.params["max_tokens"]
-        if self.max_tokens < max_tokens_spec.min or self.max_tokens > max_tokens_spec.max:
-            raise ValueError(
-                f"max_tokens must be within [{max_tokens_spec.min}, {max_tokens_spec.max}], "
-                f"got {self.max_tokens}"
-            )
+        for name in ("model", "temperature", "max_tokens"):
+            spec = MODEL_SPEC.params[name]
+            spec.validate(getattr(self, name), component_id=MODEL_SPEC.id, name=name)
 
     def generate(self, messages: list[dict]) -> str:
         response = self._client.chat.completions.create(

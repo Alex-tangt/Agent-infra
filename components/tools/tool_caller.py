@@ -1,8 +1,11 @@
+from components.tools.registration import COMPONENT_ID, VALID_STRATEGIES
 from components.tools.tool import Tool, ToolCallRequest, ToolCallResult
 
 
 class ToolCaller:
     def __init__(self, tools: list[Tool] | None = None, strategy: str = "strict"):
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"unsupported strategy: {strategy!r}")
         self._tools = {tool.name: tool for tool in (tools or [])}
         self.strategy = strategy
 
@@ -15,6 +18,24 @@ class ToolCaller:
             message = f"tool {request.tool_name!r} is not declared"
             if self.strategy == "strict":
                 raise ValueError(message)
-            return ToolCallResult(tool_name=request.tool_name, success=False, error=message)
-        output = tool.func(**request.arguments)
-        return ToolCallResult(tool_name=request.tool_name, success=True, output=output)
+            return ToolCallResult(
+                tool_name=request.tool_name,
+                success=False,
+                error=message,
+                tool_call_id=request.tool_call_id,
+            )
+        try:
+            output = tool.func(**request.arguments)
+        except Exception as exc:
+            return ToolCallResult(
+                tool_name=request.tool_name,
+                success=False,
+                error=f"{type(exc).__name__}: {exc}",
+                tool_call_id=request.tool_call_id,
+            )
+        return ToolCallResult(
+            tool_name=request.tool_name,
+            success=True,
+            output=output,
+            tool_call_id=request.tool_call_id,
+        )

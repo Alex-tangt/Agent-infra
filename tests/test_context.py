@@ -3,7 +3,7 @@ import pytest
 from components import ComponentSpec, as_dict, get_component, register, reset
 from recipe import validate
 
-from components.context import SPEC, ContextWindow
+from components.context import SPEC, ContextWindow, register_context
 
 
 @pytest.fixture(autouse=True)
@@ -14,7 +14,7 @@ def clean_registry():
 
 
 def test_context_component_registered_with_contract():
-    register(SPEC)
+    register_context()
 
     spec = get_component("context-window", "1.0")
 
@@ -27,7 +27,7 @@ def test_context_component_registered_with_contract():
 
 
 def test_contract_params_declare_defaults_and_bounds():
-    register(SPEC)
+    register_context()
 
     spec = get_component("context-window", "1.0")
 
@@ -112,7 +112,7 @@ def test_unsupported_strategy_is_rejected():
 
 
 def test_recipe_accepts_valid_context_params():
-    register(SPEC)
+    register_context()
     recipe = {
         "components": [{"id": "context-window", "version": "1.0"}],
         "connections": [],
@@ -126,7 +126,7 @@ def test_recipe_accepts_valid_context_params():
 
 
 def test_recipe_rejects_max_rounds_below_min():
-    register(SPEC)
+    register_context()
     recipe = {
         "components": [{"id": "context-window", "version": "1.0"}],
         "connections": [],
@@ -138,7 +138,7 @@ def test_recipe_rejects_max_rounds_below_min():
 
 
 def test_recipe_rejects_unsupported_strategy():
-    register(SPEC)
+    register_context()
     recipe = {
         "components": [{"id": "context-window", "version": "1.0"}],
         "connections": [],
@@ -150,7 +150,7 @@ def test_recipe_rejects_unsupported_strategy():
 
 
 def test_recipe_rejects_unknown_context_param():
-    register(SPEC)
+    register_context()
     recipe = {
         "components": [{"id": "context-window", "version": "1.0"}],
         "connections": [],

@@ -55,12 +55,4 @@ def validate(recipe: dict, registry: dict[tuple[str, str], ComponentSpec] | None
 
 
 def _validate_param(component_id: str, name: str, value: object, spec: ParamSpec) -> None:
-    if spec.enum is not None and value not in spec.enum:
-        raise ValueError(
-            f"parameter {name!r} for component {component_id!r} must be one of {spec.enum}, got {value!r}"
-        )
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if spec.min is not None and value < spec.min:
-            raise ValueError(f"parameter {name!r} for component {component_id!r} below min {spec.min}")
-        if spec.max is not None and value > spec.max:
-            raise ValueError(f"parameter {name!r} for component {component_id!r} above max {spec.max}")
+    spec.validate(value, component_id=component_id, name=name)

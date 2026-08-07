@@ -108,7 +108,8 @@ def test_result_can_be_consumed_by_llm_as_message():
 
     message = result.to_message()
     assert message["role"] == "tool"
-    assert message["tool"] == "add"
+    assert message["tool_call_id"] == result.tool_call_id
+    assert message["tool_call_id"]
     assert message["content"] == "5"
 
 
@@ -126,5 +127,22 @@ def test_result_appends_back_into_conversation_flow():
 
 def test_caller_exposes_declared_tool_manifest():
     caller = ToolCaller(tools=[make_add_tool()])
-
     assert [tool.name for tool in caller.available_tools()] == ["add"]
+
+
+def test_tool_exception_becomes_failed_result():
+    def explode(**kwargs):
+        raise RuntimeError("boom")
+
+    caller = ToolCaller(tools=[Tool(name="explode", func=explode)])
+
+    result = caller.call(ToolCallRequest(tool_name="explode"))
+
+    assert result.success is False
+    assert "RuntimeError" in result.error
+    assert result.tool_call_id is not None
+
+
+def test_unsupported_strategy_is_rejected_at_construction():
+    with pytest.raises(ValueError, match="unsupported strategy"):
+        ToolCaller(tools=[], strategy="magic")

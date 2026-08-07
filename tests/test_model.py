@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from components import as_dict, get_component, reset
-from components.model import OpenAIModel, TokenUsage, register_component
+from components.model import OpenAIModel, TokenUsage, register_model
 from recipe import validate
 
 
@@ -46,7 +46,7 @@ class FakeClient:
 
 
 def test_registered_contract_declares_message_input_and_reply_output():
-    register_component()
+    register_model()
 
     spec = get_component("model-openai", "1.0")
 
@@ -56,7 +56,7 @@ def test_registered_contract_declares_message_input_and_reply_output():
 
 
 def test_registered_contract_declares_model_params_with_defaults():
-    register_component()
+    register_model()
 
     spec = get_component("model-openai", "1.0")
 
@@ -78,7 +78,7 @@ def test_registered_contract_declares_model_params_with_defaults():
 
 
 def test_registered_contract_is_consumed_by_recipe_validation():
-    register_component()
+    register_model()
 
     result = validate(
         {
