@@ -19,6 +19,12 @@ class ContextWindow:
     def add_assistant_message(self, content: str) -> None:
         self._messages.append({"role": "assistant", "content": content})
 
+    def add_tool_message(self, content: str, tool_call_id: str | None = None) -> None:
+        message = {"role": "tool", "content": content}
+        if tool_call_id is not None:
+            message["tool_call_id"] = tool_call_id
+        self._messages.append(message)
+
     def get_messages(self) -> list[dict]:
         return list(self._messages)
 
