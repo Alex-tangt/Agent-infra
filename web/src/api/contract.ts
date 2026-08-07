@@ -1,5 +1,6 @@
 // 运行界面 ↔ Python demo 的语言中立 JSON 契约（ADR-0003 第二条边界）。
-// TS 侧在此定义接口类型；Python 侧按同一 JSON 形状实现 HTTP 端点。
+// 权威定义在 contracts/demo-api.openapi.json（OpenAPI 3.0，TS/Python 共享）。
+// 本文件的类型和 endpoints 是它的实现推导，改动契约须同步该文档。
 
 export type ChatRole = "user" | "assistant" | "system";
 

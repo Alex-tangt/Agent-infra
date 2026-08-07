@@ -209,3 +209,29 @@ def test_cyclic_connection_raises():
 
     with pytest.raises(ValueError, match="cycle"):
         generate(recipe, registry=_registry())
+
+
+def test_recipe_object_path_also_validates_parameters():
+    from recipe import Recipe
+
+    recipe = Recipe(
+        components=[{"id": "model-openai", "version": "1.0"}],
+        connections=[],
+        parameters={"model-openai": {"temperature": 99.0}},
+    )
+
+    with pytest.raises(ValueError, match="above max"):
+        generate(recipe, registry=_registry())
+
+
+def test_unconnected_component_without_string_input_raises():
+    recipe = {
+        "components": [
+            {"id": "tool-caller", "version": "1.0"},
+        ],
+        "connections": [],
+        "parameters": {},
+    }
+
+    with pytest.raises(ValueError, match="no incoming connection"):
+        generate(recipe, registry=_registry())

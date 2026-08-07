@@ -4,10 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from components import as_dict, get_component, reset
-from components.agent import Agent, default_turn_strategy, register_agent
+from components.agent import Agent, ToolRequest, default_turn_strategy, register_agent
 from components.context import ContextWindow
 from components.model import OpenAIModel
-from components.tools import Tool, ToolCallRequest, ToolCallResult, ToolCaller
+from components.tools import Tool, ToolCallResult, ToolCaller
 from recipe import validate
 
 
@@ -215,7 +215,7 @@ def test_default_turn_strategy_returns_none_for_plain_text():
 def test_default_turn_strategy_extracts_tool_request_from_json_text():
     request = default_turn_strategy('{"tool": "add", "arguments": {"a": 2, "b": 3}}')
 
-    assert isinstance(request, ToolCallRequest)
+    assert isinstance(request, ToolRequest)
     assert request.tool_name == "add"
     assert request.arguments == {"a": 2, "b": 3}
 
@@ -223,7 +223,7 @@ def test_default_turn_strategy_extracts_tool_request_from_json_text():
 def test_custom_turn_strategy_is_used_for_tool_request_detection():
     def strategy(text):
         if text.startswith("USE_TOOL"):
-            return ToolCallRequest(tool_name="add", arguments={"a": 1, "b": 2})
+            return ToolRequest(tool_name="add", arguments={"a": 1, "b": 2})
         return None
 
     model = FakeModel(["USE_TOOL add", "done"])

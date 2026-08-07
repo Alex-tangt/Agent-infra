@@ -1,7 +1,8 @@
 import json
+from dataclasses import dataclass, field
+from uuid import uuid4
 
 from components.registry import register
-from components.tools.tool import ToolCallRequest
 from components.types import ComponentSpec, ParamSpec, Port
 
 AGENT_SPEC = ComponentSpec(
@@ -20,7 +21,14 @@ def register_agent() -> ComponentSpec:
     return AGENT_SPEC
 
 
-def default_turn_strategy(text: str) -> ToolCallRequest | None:
+@dataclass
+class ToolRequest:
+    tool_name: str
+    arguments: dict
+    tool_call_id: str = field(default_factory=lambda: f"call_{uuid4().hex[:8]}")
+
+
+def default_turn_strategy(text: str) -> ToolRequest | None:
     stripped = text.strip()
     if not (stripped.startswith("{") and stripped.endswith("}")):
         return None
@@ -34,7 +42,7 @@ def default_turn_strategy(text: str) -> ToolCallRequest | None:
         return None
     if not isinstance(arguments, dict):
         arguments = {}
-    return ToolCallRequest(tool_name=tool_name, arguments=arguments)
+    return ToolRequest(tool_name=tool_name, arguments=arguments)
 
 
 class Agent:
@@ -71,8 +79,6 @@ class Agent:
             if request is None:
                 return reply
             result = self._tools.call(request)
-            message = result.to_message()
-            self._context.add_tool_message(
-                message["content"], tool_call_id=message.get("tool_call_id")
-            )
+            content = result.output if result.success else (result.error or f"tool failed")
+            self._context.add_tool_message(str(content), tool_call_id=result.tool_call_id)
         return reply

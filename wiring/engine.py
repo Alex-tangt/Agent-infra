@@ -170,11 +170,31 @@ def _check_contract(connection: dict, specs: dict) -> None:
         )
 
 
+def _check_chain_head(chain: list, specs: dict, connections: list) -> None:
+    for cid in chain:
+        has_incoming = any(c["to"] == cid for c in connections)
+        if has_incoming:
+            continue
+        input_types = [p.type for p in specs[cid].inputs]
+        if "string" not in input_types:
+            raise ValueError(
+                f"component {cid!r} has no incoming connection and its input types "
+                f"({input_types}) do not accept the chain head 'user_message' (string); "
+                f"add a connection or a string-input component"
+            )
+
+
 def generate(recipe: dict | Recipe, registry: dict) -> str:
-    if isinstance(recipe, dict):
-        recipe = validate_recipe(recipe, registry=registry)
-    if not isinstance(recipe, Recipe):
+    if isinstance(recipe, Recipe):
+        recipe = {
+            "name": recipe.name,
+            "components": recipe.components,
+            "connections": recipe.connections,
+            "parameters": recipe.parameters,
+        }
+    if not isinstance(recipe, dict):
         raise TypeError("recipe must be a dict or Recipe")
+    recipe = validate_recipe(recipe, registry=registry)
 
     specs = {}
     for entry in recipe.components:
@@ -188,5 +208,8 @@ def generate(recipe: dict | Recipe, registry: dict) -> str:
 
     for connection in recipe.connections:
         _check_contract(connection, specs)
+
+    chain = _chain(recipe)
+    _check_chain_head(chain, specs, recipe.connections)
 
     return _render(recipe, specs)

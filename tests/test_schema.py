@@ -169,3 +169,35 @@ def test_schema_contract_agrees_with_python_validate():
     validated = validate(payload, registry=REGISTRY)
 
     assert validated.name == "weather-agent"
+
+
+def test_validate_json_rejects_unknown_component_with_registry():
+    recipe = json.dumps(
+        {
+            "components": [{"id": "does-not-exist", "version": "1.0"}],
+            "connections": [],
+            "parameters": {},
+        }
+    )
+
+    with pytest.raises(ValueError, match="unknown component"):
+        validate_json(recipe, registry=REGISTRY)
+
+
+def test_validate_json_rejects_out_of_range_param_with_registry():
+    recipe = json.dumps(
+        {
+            "components": [{"id": "model-gpt4", "version": "1.0"}],
+            "connections": [],
+            "parameters": {"model-gpt4": {"temperature": 3.5}},
+        }
+    )
+
+    with pytest.raises(ValueError, match="above max"):
+        validate_json(recipe, registry=REGISTRY)
+
+
+def test_validate_json_accepts_without_registry_for_structure_only():
+    recipe = validate_json(json.dumps(VALID_RECIPE))
+
+    assert recipe.name == "weather-agent"

@@ -1,0 +1,232 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Runtime UI Demo API",
+    "description": "运行界面 ↔ Python demo 的语言中立 JSON 契约（ADR-0003 第二条边界）。TS 侧（web/src/api/contract.ts）的类型由此文档推导；Python 侧按此形状实现 HTTP 端点。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/demo/{demoId}/chat": {
+      "post": {
+        "summary": "向运行中的 demo 发消息并取回复",
+        "parameters": [
+          {
+            "name": "demoId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "agent 回复",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatReply" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo/{demoId}/telemetry": {
+      "get": {
+        "summary": "获取 demo 的组件粒度遥测数据",
+        "parameters": [
+          {
+            "name": "demoId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "遥测 span 列表",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TelemetryResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo/{demoId}/ablations": {
+      "post": {
+        "summary": "触发一次消融跑",
+        "parameters": [
+          {
+            "name": "demoId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AblationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "消融跑结果",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AblationResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatRole": {
+        "type": "string",
+        "enum": ["user", "assistant", "system"]
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "$ref": "#/components/schemas/ChatRole" },
+          "content": { "type": "string" }
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "required": ["messages"],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ChatMessage" }
+          }
+        }
+      },
+      "ChatReply": {
+        "type": "object",
+        "required": ["reply"],
+        "properties": {
+          "reply": { "$ref": "#/components/schemas/ChatMessage" }
+        }
+      },
+      "TokenUsage": {
+        "type": "object",
+        "required": ["input", "output"],
+        "properties": {
+          "input": { "type": "number" },
+          "output": { "type": "number" }
+        }
+      },
+      "TelemetrySpan": {
+        "type": "object",
+        "required": [
+          "id",
+          "componentId",
+          "operation",
+          "startTimeMs",
+          "durationMs",
+          "tokenUsage",
+          "status"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "componentId": { "type": "string" },
+          "operation": { "type": "string" },
+          "startTimeMs": { "type": "number" },
+          "durationMs": { "type": "number" },
+          "tokenUsage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenUsage" },
+              { "type": "null" }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "error"]
+          }
+        }
+      },
+      "TelemetryResponse": {
+        "type": "object",
+        "required": ["spans"],
+        "properties": {
+          "spans": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TelemetrySpan" }
+          }
+        }
+      },
+      "AblationKind": {
+        "type": "string",
+        "enum": ["swap", "remove", "override"]
+      },
+      "AblationVariant": {
+        "type": "object",
+        "required": ["kind", "target"],
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AblationKind" },
+          "target": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "AblationRequest": {
+        "type": "object",
+        "required": ["variant"],
+        "properties": {
+          "variant": { "$ref": "#/components/schemas/AblationVariant" }
+        }
+      },
+      "AblationResult": {
+        "type": "object",
+        "required": ["variant", "scores", "spans"],
+        "properties": {
+          "variant": { "$ref": "#/components/schemas/AblationVariant" },
+          "scores": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          },
+          "spans": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TelemetrySpan" }
+          }
+        }
+      },
+      "AblationRun": {
+        "type": "object",
+        "required": ["runId", "status", "results"],
+        "properties": {
+          "runId": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "done", "failed"]
+          },
+          "results": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AblationResult" }
+          }
+        }
+      },
+      "AblationResponse": {
+        "type": "object",
+        "required": ["run"],
+        "properties": {
+          "run": { "$ref": "#/components/schemas/AblationRun" }
+        }
+      }
+    }
+  }
+}

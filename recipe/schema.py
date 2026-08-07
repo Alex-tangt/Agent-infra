@@ -49,16 +49,23 @@ RECIPE_SCHEMA = {
 }
 
 
+import json
+
+from recipe import Recipe, validate
+
+
 def to_json_schema() -> str:
     return json.dumps(RECIPE_SCHEMA, indent=2)
 
 
-def validate_json(text: str) -> Recipe:
+def validate_json(text: str, registry: dict | None = None) -> Recipe:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise ValueError(f"recipe is not valid JSON: {exc}") from exc
     _validate_node(data, RECIPE_SCHEMA, "recipe")
+    if registry is not None:
+        validate(data, registry=registry)
     return Recipe(
         name=data.get("name", "agent"),
         components=data.get("components", []),

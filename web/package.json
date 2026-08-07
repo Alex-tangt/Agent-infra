@@ -6,6 +6,7 @@
   "description": "运行界面（Runtime UI）：三面板（聊天 / 调试监测 / 评估）+ 调 Python demo 的 API 客户端",
   "scripts": {
     "test": "node --test tests/*.test.ts",
+    "pretest": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "start": "node dist/start.js",
