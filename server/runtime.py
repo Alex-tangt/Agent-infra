@@ -1,5 +1,4 @@
 import os
-import re
 import uuid
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -114,43 +113,46 @@ def _ablation_variables(variant: dict) -> list:
     raise ValueError(f"unknown ablation kind: {kind!r}")
 
 
-def _span_to_contract(span, index: int) -> dict:
+def _to_contract_span(component_id: str, operation: str, start_time: float, duration_ms: float, input_tokens, output_tokens, index: int) -> dict:
     token_usage = None
-    if span.input_tokens is not None:
-        token_usage = {"input": span.input_tokens, "output": span.output_tokens}
+    if input_tokens is not None:
+        token_usage = {"input": input_tokens, "output": output_tokens}
     return {
-        "id": f"{span.component_id}:{span.operation}:{index}",
-        "componentId": span.component_id,
-        "operation": span.operation,
-        "startTimeMs": round(span.start_time * 1000.0),
-        "durationMs": round(span.duration_ms, 3),
+        "id": f"{component_id}:{operation}:{index}",
+        "componentId": component_id,
+        "operation": operation,
+        "startTimeMs": round(start_time * 1000.0),
+        "durationMs": round(duration_ms, 3),
         "tokenUsage": token_usage,
         "status": "ok",
     }
 
 
+def _span_to_contract(span, index: int) -> dict:
+    return _to_contract_span(
+        span.component_id,
+        span.operation,
+        span.start_time,
+        span.duration_ms,
+        span.input_tokens,
+        span.output_tokens,
+        index,
+    )
+
+
 def _records_to_spans(records: list) -> list:
-    spans = []
-    for index, record in enumerate(records):
-        token_usage = None
-        input_tokens = record.get("gen_ai.usage.input_tokens")
-        if input_tokens is not None:
-            token_usage = {
-                "input": input_tokens,
-                "output": record.get("gen_ai.usage.output_tokens"),
-            }
-        spans.append(
-            {
-                "id": f"{record['component_id']}:{record['gen_ai.operation.name']}:{index}",
-                "componentId": record["component_id"],
-                "operation": record["gen_ai.operation.name"],
-                "startTimeMs": round(record["start_time"] * 1000.0),
-                "durationMs": round(record["duration_ms"], 3),
-                "tokenUsage": token_usage,
-                "status": "ok",
-            }
+    return [
+        _to_contract_span(
+            record["component_id"],
+            record["gen_ai.operation.name"],
+            record["start_time"],
+            record["duration_ms"],
+            record.get("gen_ai.usage.input_tokens"),
+            record.get("gen_ai.usage.output_tokens"),
+            index,
         )
-    return spans
+        for index, record in enumerate(records)
+    ]
 
 
 class RuntimeUI:
