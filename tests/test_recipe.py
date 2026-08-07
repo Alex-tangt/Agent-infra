@@ -1,6 +1,7 @@
 import pytest
 
-from recipe import ComponentSpec, ParamSpec, validate
+from components import ComponentSpec, ParamSpec
+from recipe import validate
 
 REGISTRY = {
     "model-gpt4": ComponentSpec(

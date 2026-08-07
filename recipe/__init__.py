@@ -1,20 +1,6 @@
 from dataclasses import dataclass, field
 
-
-@dataclass
-class ParamSpec:
-    type: str
-    default: object = None
-    enum: list | None = None
-    min: float | None = None
-    max: float | None = None
-
-
-@dataclass
-class ComponentSpec:
-    id: str
-    version: str
-    params: dict[str, ParamSpec] = field(default_factory=dict)
+from components.types import ComponentSpec, ParamSpec
 
 
 @dataclass
