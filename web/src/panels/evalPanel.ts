@@ -1,5 +1,5 @@
-import type { AblationRun, AblationVariant, TelemetrySpan } from "../api/contract.ts";
-import type { DemoApi } from "../mockDemoApi.ts";
+﻿import type { AblationRun, AblationVariant, TelemetrySpan } from "../api/contract.ts";
+import type { DemoApi } from "../api/contract.ts";
 
 export interface EvalPanelState {
   run: AblationRun | null;

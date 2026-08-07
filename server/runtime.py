@@ -268,7 +268,10 @@ class RuntimeUI:
     def trigger_ablation(self, demo_id: str, request: dict) -> dict:
         with self._lock:
             demo = self._get_demo(demo_id)
-            variables = _ablation_variables(request["variant"])
+            variant = request.get("variant")
+            if not isinstance(variant, dict):
+                raise ValueError("ablation request requires a variant object")
+            variables = _ablation_variables(variant)
             summary = run_ablation(
                 demo.recipe,
                 variables,

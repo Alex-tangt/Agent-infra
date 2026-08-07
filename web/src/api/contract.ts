@@ -93,6 +93,14 @@ export interface GenerateDemoResponse {
   message?: string;
 }
 
+// 调 Python demo 的统一接口（测试接缝）：MockDemoApi 与 DemoApiClient 均实现。
+export interface DemoApi {
+  sendChat(demoId: string, messages: ChatMessage[]): Promise<ChatReply>;
+  getTelemetry(demoId: string): Promise<TelemetryResponse>;
+  triggerAblation(demoId: string, request: AblationRequest): Promise<AblationResponse>;
+  generateDemo(demoId: string, request: GenerateDemoRequest): Promise<GenerateDemoResponse>;
+}
+
 export const endpoints = {
   chat: (demoId: string) => `/demo/${demoId}/chat`,
   telemetry: (demoId: string) => `/demo/${demoId}/telemetry`,

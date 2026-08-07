@@ -1,5 +1,5 @@
-import type { Recipe } from "../api/contract.ts";
-import type { DemoApi } from "../mockDemoApi.ts";
+﻿import type { Recipe } from "../api/contract.ts";
+import type { DemoApi } from "../api/contract.ts";
 
 // 组装器联动面板依赖的接口契约（测试接缝）：真实实现是 assembler 的 requirementToRecipe
 // 纯函数（测试直接 import 组装器源码走真实链路），也可注入 mock。

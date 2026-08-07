@@ -3,18 +3,11 @@ import type {
   AblationResponse,
   ChatMessage,
   ChatReply,
+  DemoApi,
   GenerateDemoRequest,
   GenerateDemoResponse,
   TelemetryResponse,
 } from "./api/contract.ts";
-
-// 调 Python demo 的接口（测试接缝：mock 用同一接口实现）。
-export interface DemoApi {
-  sendChat(demoId: string, messages: ChatMessage[]): Promise<ChatReply>;
-  getTelemetry(demoId: string): Promise<TelemetryResponse>;
-  triggerAblation(demoId: string, request: AblationRequest): Promise<AblationResponse>;
-  generateDemo(demoId: string, request: GenerateDemoRequest): Promise<GenerateDemoResponse>;
-}
 
 // 内存假后端：骨架独立运行 / 测试时替代 Python demo。
 export class MockDemoApi implements DemoApi {

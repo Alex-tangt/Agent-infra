@@ -1,5 +1,5 @@
 import { DemoApiClient } from "./apiClient.ts";
-import type { DemoApi } from "../mockDemoApi.ts";
+import type { DemoApi } from "./contract.ts";
 import { MockDemoApi } from "../mockDemoApi.ts";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:9000";

@@ -1,5 +1,5 @@
-import type { ChatMessage, ChatReply } from "../api/contract.ts";
-import type { DemoApi } from "../mockDemoApi.ts";
+﻿import type { ChatMessage, ChatReply } from "../api/contract.ts";
+import type { DemoApi } from "../api/contract.ts";
 
 // 聊天面板依赖的接口契约（测试接缝）：与 DemoApi 共享，MockDemoApi 与 DemoApiClient 均满足。
 export type ChatApi = Pick<DemoApi, "sendChat">;
