@@ -6,27 +6,26 @@ import {
   type AssemblerServerOptions,
 } from "../src/server.ts";
 import { PiDriver } from "../src/piDriver.ts";
-import type { Recipe } from "../src/recipe.ts";
 
-const VALID_RECIPE: Recipe = {
-  name: "weather-agent",
-  components: [
-    { id: "context-window", version: "1.0" },
-    { id: "model-openai", version: "1.0" },
-    { id: "tool-caller", version: "1.0" },
-  ],
-  connections: [
-    { from: "context-window", to: "model-openai" },
-    { from: "model-openai", to: "tool-caller" },
-  ],
-  parameters: { "model-openai": { temperature: 0.5 } },
-};
+const DEMO_CODE = [
+  "from components.agent import Agent, register_agent",
+  "from components.context import ContextWindow, register_context",
+  "from components.model import OpenAIModel, register_model",
+  "",
+  "context_window = ContextWindow(max_rounds=5, strategy=\"truncate\")",
+  "model = OpenAIModel(model=\"gpt-4o-mini\", temperature=0.7, max_tokens=1024)",
+  "agent_single = Agent(model=model, context=context_window, tools=None, max_iterations=3)",
+  "",
+  "def run(user_message: str) -> str:",
+  "    return agent_single.run(user_message)",
+  "",
+].join("\n");
 
 async function withServer(
   fn: (baseUrl: string) => Promise<void>,
   options: AssemblerServerOptions = {},
 ): Promise<void> {
-  // 默认不注入驱动 → 走 local 驱动（确定性转换，无模型依赖）；可按需注入 pi 驱动
+  // 默认不注入驱动 → 走 local 驱动（确定性输出 demo 代码，无模型依赖）；可按需注入 pi 驱动
   const server = createAssemblerServer(options);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address();
@@ -47,23 +46,28 @@ function post(baseUrl: string, body: unknown): Promise<Response> {
   });
 }
 
-test("POST /assemble: 明确需求 → 配方 + 组装记录", async () => {
+test("POST /assemble: 明确需求 → demo 代码 + 瞬态 spec + 组装记录", async () => {
   await withServer(async (baseUrl) => {
     const res = await post(baseUrl, { requirement: "用 gpt-4o 做一个会查天气的 agent" });
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("access-control-allow-origin"), "*");
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = (await res.json()) as {
+      status: string;
+      code?: string;
+      spec?: Record<string, unknown> | null;
+      buildNote?: Record<string, unknown>;
+    };
     assert.equal(body.status, "recipe");
-    const result = body as { status: "recipe"; recipe: Record<string, unknown>; buildNote: Record<string, unknown> };
-    assert.ok(result.recipe.components);
-    assert.ok(result.recipe.connections);
-    assert.ok(result.recipe.parameters);
-    assert.ok(result.buildNote.decisions);
+    assert.ok(typeof body.code === "string" && body.code.length > 0);
+    assert.match(body.code!, /def run\(user_message: str\)/);
+    assert.ok(body.spec && "components" in body.spec);
+    assert.ok(Array.isArray(body.spec!.components));
+    assert.ok(body.buildNote!.decisions);
   });
 });
 
-test("POST /assemble: 模糊需求 → 澄清问题（非配方）", async () => {
+test("POST /assemble: 模糊需求 → 澄清问题（非代码）", async () => {
   await withServer(async (baseUrl) => {
     const res = await post(baseUrl, { requirement: "做一个带工具的 agent" });
 
@@ -74,7 +78,7 @@ test("POST /assemble: 模糊需求 → 澄清问题（非配方）", async () =>
   });
 });
 
-test("POST /assemble: 带 answers → 澄清闭环出配方", async () => {
+test("POST /assemble: 带 answers → 澄清闭环出 demo 代码 + spec", async () => {
   await withServer(async (baseUrl) => {
     const first = await post(baseUrl, { requirement: "做一个带工具的 agent" });
     assert.equal(((await first.json()) as { status: string }).status, "clarify");
@@ -84,16 +88,21 @@ test("POST /assemble: 带 answers → 澄清闭环出配方", async () => {
       answers: { model: "gpt-4o", tools: ["天气"] },
     });
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { status: string; recipe?: { name?: string } };
+    const body = (await res.json()) as {
+      status: string;
+      code?: string;
+      spec?: { name?: string } | null;
+    };
     assert.equal(body.status, "recipe");
-    assert.equal(body.recipe?.name, "weather-agent");
+    assert.ok(typeof body.code === "string" && body.code.length > 0);
+    assert.equal(body.spec?.name, "weather-agent");
   });
 });
 
-test("POST /assemble: 注入 pi 驱动（mock 会话）按需可用", async () => {
+test("POST /assemble: 注入 pi 驱动（mock 会话）按需可用，spec 为空", async () => {
   const driver = new PiDriver({
     createSession: async () => ({
-      run: async (): Promise<Recipe> => structuredClone(VALID_RECIPE) as Recipe,
+      run: async (): Promise<string> => DEMO_CODE,
     }),
   });
 
@@ -102,9 +111,15 @@ test("POST /assemble: 注入 pi 驱动（mock 会话）按需可用", async () =
       const res = await post(baseUrl, { requirement: "用 gpt-4o 做一个会查天气的 agent" });
 
       assert.equal(res.status, 200);
-      const body = (await res.json()) as { status: string; recipe?: { name?: string } };
+      const body = (await res.json()) as {
+        status: string;
+        code?: string;
+        spec?: Record<string, unknown> | null;
+      };
       assert.equal(body.status, "recipe");
-      assert.equal(body.recipe?.name, "weather-agent");
+      assert.ok(typeof body.code === "string" && body.code.length > 0);
+      assert.match(body.code!, /def run\(user_message: str\)/);
+      assert.equal(body.spec, null);
     },
     { deps: { driver } },
   );

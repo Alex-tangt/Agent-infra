@@ -6,6 +6,9 @@
 - 字面量参数：类型 / 枚举 / 范围全量校验
 - 变量/字典参数：仅校验参数名存在
 - 动态拼接：仅确认是构造调用
+
+返回值额外携带"使用的组件 id 集合"（component_ids），供运行时精确注入
+client / 包装遥测，不再依赖配方判断哪些组件在 demo 里。
 """
 
 import ast
@@ -25,6 +28,7 @@ class CodeCheckIssue:
 class CodeCheckResult:
     issues: list[CodeCheckIssue] = field(default_factory=list)
     checked_calls: int = 0
+    component_ids: set[str] = field(default_factory=set)
 
     @property
     def ok(self) -> bool:
@@ -60,6 +64,7 @@ def check_demo_code(code: str, registry: dict[tuple[str, str], ComponentSpec]) -
         if spec is None:
             continue
         result.checked_calls += 1
+        result.component_ids.add(spec.id)
         _check_call(node, spec, result)
     return result
 

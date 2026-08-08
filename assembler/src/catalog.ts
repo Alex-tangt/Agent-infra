@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 export interface ParamSpec {
   type: string;
   default?: unknown;
@@ -6,9 +8,19 @@ export interface ParamSpec {
   max?: number;
 }
 
+export interface PortSpec {
+  name: string;
+  type: string;
+}
+
 export interface ComponentEntry {
   id: string;
   version: string;
+  description?: string;
+  role?: string;
+  class_name?: string;
+  inputs?: PortSpec[];
+  outputs?: PortSpec[];
   params: Record<string, ParamSpec>;
 }
 
@@ -16,60 +28,26 @@ export interface ComponentCatalog {
   components: ComponentEntry[];
 }
 
-export const DEFAULT_CATALOG: ComponentCatalog = {
-  components: [
-    {
-      id: "model-openai",
-      version: "1.0",
-      params: {
-        model: {
-          type: "string",
-          enum: ["gpt-4o-mini", "gpt-4o"],
-          default: "gpt-4o-mini",
-        },
-        temperature: { type: "number", min: 0, max: 2, default: 0.7 },
-        max_tokens: { type: "number", min: 1, max: 16384, default: 1024 },
-      },
-    },
-    {
-      id: "model-ollama",
-      version: "1.0",
-      params: {
-        model: { type: "string", default: "llama3" },
-        temperature: { type: "number", min: 0, max: 2, default: 0.7 },
-        max_tokens: { type: "number", min: 1, max: 16384, default: 1024 },
-        base_url: { type: "string", default: "http://localhost:11434/v1" },
-      },
-    },
-    {
-      id: "context-window",
-      version: "1.0",
-      params: {
-        max_rounds: { type: "integer", min: 1, default: 5 },
-        strategy: { type: "string", enum: ["truncate"], default: "truncate" },
-      },
-    },
-    {
-      id: "tool-caller",
-      version: "1.0",
-      params: {
-        tools: { type: "list", default: [] },
-        strategy: {
-          type: "string",
-          enum: ["strict", "lenient"],
-          default: "strict",
-        },
-      },
-    },
-    {
-      id: "agent-single",
-      version: "1.0",
-      params: {
-        max_iterations: { type: "integer", min: 1, default: 5 },
-      },
-    },
-  ],
-};
+// 组件契约的单一权威源是 Python 侧 components/registry.py（ADR-0005）。本文件不再手抄，
+// 只读取 registry 的导出只读契约 contracts/component-catalog.json（由 scripts/export_catalog.py 生成）。
+const CATALOG_FILE_URL = new URL(
+  "../../contracts/component-catalog.json",
+  import.meta.url,
+);
+
+function loadDefaultCatalog(): ComponentCatalog {
+  let raw: string;
+  try {
+    raw = readFileSync(CATALOG_FILE_URL, "utf-8");
+  } catch {
+    throw new Error(
+      `组件注册表导出物缺失（${CATALOG_FILE_URL.href}）：请先运行 python scripts/export_catalog.py 生成 contracts/component-catalog.json`,
+    );
+  }
+  return JSON.parse(raw) as ComponentCatalog;
+}
+
+export const DEFAULT_CATALOG: ComponentCatalog = loadDefaultCatalog();
 
 export function findComponent(
   catalog: ComponentCatalog,

@@ -64,12 +64,12 @@ export interface AssemblerServerOptions {
 }
 
 /**
- * 组装器 HTTP 服务：暴露 POST /assemble（真实"需求→配方"链路）。
- * 浏览器无法直接 import 组装器（schema.ts 依赖 node:fs 读 recipe-schema.json），
+ * 组装器 HTTP 服务：暴露 POST /assemble（真实"需求→demo 代码"链路，代码是唯一真相源）。
+ * 浏览器无法直接 import 组装器（本地驱动跑在 Node 侧），
  * 故包装为 Node 服务供运行界面经 API 调用；带 CORS 头解决本地开发跨域。
  */
 export function createAssemblerServer(options: AssemblerServerOptions = {}): Server {
-  // 默认本地驱动：确定性转换（无模型依赖，web 演示开箱即用）；pi 驱动按需注入 options.deps.driver。
+  // 默认本地驱动：确定性输出 demo 代码（无模型依赖，web 演示开箱即用）；pi 驱动按需注入 options.deps.driver。
   // 模型组件选型：默认 model-openai；本地 ollama 环境经 ASSEMBLER_MODEL_COMPONENT=model-ollama 覆盖。
   const modelComponent = process.env.ASSEMBLER_MODEL_COMPONENT ?? "model-openai";
   const deps: AssembleDeps = {

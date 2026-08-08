@@ -27,7 +27,12 @@ test("catalog: model-openai declares the registered param specs", () => {
     "model",
     "temperature",
   ]);
-  assert.deepEqual(model.params.model?.enum, ["gpt-4o-mini", "gpt-4o"]);
+  assert.deepEqual(model.params.model?.enum, [
+    "gpt-4o-mini",
+    "gpt-4o",
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+  ]);
   assert.equal(model.params.temperature?.min, 0);
   assert.equal(model.params.temperature?.max, 2);
 });
@@ -43,6 +48,16 @@ test("catalog: model-ollama declares the local ollama param specs", () => {
   ]);
   assert.equal(model.params.model?.default, "llama3");
   assert.equal(model.params.base_url?.default, "http://localhost:11434/v1");
+});
+
+test("catalog: entries carry the registry usage notes (description/role/class_name)", () => {
+  const agent = requireComponent(DEFAULT_CATALOG, "agent-single");
+
+  assert.ok(agent.description);
+  assert.equal(agent.role, "agent");
+  assert.equal(agent.class_name, "Agent");
+  assert.deepEqual(agent.inputs?.map((p) => p.name), ["user_message"]);
+  assert.deepEqual(agent.outputs?.map((p) => p.name), ["reply"]);
 });
 
 test("catalog: requireComponent throws for an unknown id", () => {

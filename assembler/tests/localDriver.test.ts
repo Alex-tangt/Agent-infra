@@ -2,26 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { DEFAULT_CATALOG } from "../src/catalog.ts";
 import { LocalDriver } from "../src/localDriver.ts";
-import { validateStructure } from "../src/schema.ts";
-import { validateParams } from "../src/validate.ts";
-import type { LlmLike } from "../src/structuredOutput.ts";
 import type { Acquisition } from "../src/driver.ts";
-
-const VALID_RECIPE_JSON = JSON.stringify({
-  name: "weather-agent",
-  components: [
-    { id: "context-window", version: "1.0" },
-    { id: "model-openai", version: "1.0" },
-    { id: "tool-caller", version: "1.0" },
-  ],
-  connections: [
-    { from: "context-window", to: "model-openai" },
-    { from: "model-openai", to: "tool-caller" },
-  ],
-  parameters: { "model-openai": { temperature: 0.5 } },
-});
 
 const SKILLS_DIR = join(process.cwd(), "..", "skills", "agent-design");
 
@@ -63,25 +45,48 @@ test("localDriver: answers are folded into the prompt for a clarified requiremen
   assert.match(ready.prompt, /天气/);
 });
 
-test("localDriver: deterministic conversion yields a schema-valid recipe", async () => {
+test("localDriver: deterministic conversion yields demo code with run() + registered component construction", async () => {
   const driver = new LocalDriver({});
 
   const ready = isReady(await driver.acquire("会查天气的聊天 agent"));
-  const recipe = await driver.convert(ready.prompt);
+  const code = await driver.convert(ready.prompt);
 
-  assert.doesNotThrow(() => validateStructure(recipe));
-  assert.doesNotThrow(() => validateParams(recipe, DEFAULT_CATALOG));
+  assert.match(code, /def run\(user_message: str\)/);
+  assert.match(code, /ContextWindow\(max_rounds=5, strategy="truncate"\)/);
+  assert.match(code, /OpenAIModel\(model="gpt-4o-mini", temperature=0\.7, max_tokens=1024\)/);
+  assert.match(code, /Agent\(/);
 });
 
-test("localDriver: llm conversion constrains a mock model output into a recipe", async () => {
-  const llm: LlmLike = () => VALID_RECIPE_JSON;
-  const driver = new LocalDriver({ llm, useLlm: true });
+test("localDriver: ollama requirement swaps the model construction to OllamaModel", async () => {
+  const driver = new LocalDriver({});
+
+  const ready = isReady(await driver.acquire("用 ollama 做一个会算数的聊天 agent"));
+  const code = await driver.convert(ready.prompt);
+
+  assert.match(code, /OllamaModel/);
+  assert.doesNotMatch(code, /OpenAIModel/);
+  assert.match(code, /def run\(user_message: str\)/);
+});
+
+test("localDriver: conversion is deterministic for the same requirement", async () => {
+  const driver = new LocalDriver({});
 
   const ready = isReady(await driver.acquire("会查天气的聊天 agent"));
-  const recipe = await driver.convert(ready.prompt);
+  const first = await driver.convert(ready.prompt);
+  const second = await driver.convert(ready.prompt);
 
-  assert.equal(recipe.name, "weather-agent");
-  assert.doesNotThrow(() => validateStructure(recipe));
+  assert.equal(first, second);
+});
+
+test("localDriver: convert output surfaces a transient spec for validation", async () => {
+  const driver = new LocalDriver({});
+
+  const ready = isReady(await driver.acquire("会查天气的聊天 agent"));
+  const spec = await driver.spec(ready.prompt);
+
+  assert.ok(spec, "spec 应为可校验的瞬态声明");
+  assert.equal(spec!.name, "weather-agent");
+  assert.ok(spec!.components.length > 0);
 });
 
 test("localDriver: an agent-like requirement loads the design skill (injected)", async () => {
@@ -101,14 +106,4 @@ test("localDriver: a non-agent requirement loads no skill", async () => {
   await driver.acquire("帮我写一个 python 排序脚本");
 
   assert.deepEqual(driver.skillsUsed(), []);
-});
-
-test("localDriver: the llm prompt carries skill context and operating rules", async () => {
-  const llm: LlmLike = () => VALID_RECIPE_JSON;
-  const driver = new LocalDriver({ llm, useLlm: true, skillsDir: SKILLS_DIR });
-
-  const ready = isReady(await driver.acquire("会查天气的聊天 agent"));
-
-  assert.match(ready.prompt, /agent-design/);
-  assert.match(ready.prompt, /不写 demo 代码/);
 });

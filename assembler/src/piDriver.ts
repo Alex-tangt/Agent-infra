@@ -1,14 +1,12 @@
 import {
   createAgentSession,
   DefaultResourceLoader,
-  defineTool,
   getAgentDir,
   loadSkillsFromDir,
   SessionManager,
   type CreateAgentSessionOptions,
   type ResourceDiagnostic,
   type Skill,
-  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
 
@@ -21,23 +19,20 @@ import {
 import type { Acquisition, AssemblerDriver, SkillReference } from "./driver.ts";
 import { runAcquire } from "./driver.ts";
 import { ASSEMBLER_OPERATING_RULES } from "./operatingRules.ts";
-import type { Recipe } from "./recipe.ts";
-import {
-  constrainToRecipe,
-  RECIPE_PARAMS_SCHEMA,
-} from "./structuredOutput.ts";
 
 const DEFAULT_SKILLS_DIR = fileURLToPath(new URL("../../skills", import.meta.url));
+// 首个已知良好示例：pi 会话先 read 它看标准形态（三件套 + 薄容器 + 构造调用 + run()）。
+export const DEFAULT_EXAMPLE_PATH = "demos/calculator_agent.py";
 
 export interface PiSession {
-  run(prompt: string): Promise<Recipe>;
+  /** 跑完一个回合：把 pi 最后一条 assistant 消息当作 demo 代码返回 */
+  run(prompt: string): Promise<string>;
 }
 
 export interface RealSessionOptions {
   cwd: string;
   agentDir: string;
   skillsDir: string;
-  catalog: ComponentCatalog;
   model?: unknown;
 }
 
@@ -47,7 +42,9 @@ export interface PiDriverOptions {
   cwd?: string;
   agentDir?: string;
   model?: unknown;
-  /** 配方默认选用的模型组件（服务启动时由 ASSEMBLER_MODEL_COMPONENT 注入） */
+  /** 示例文件路径（相对 cwd，供 pi 会话 read 看标准形态） */
+  examplePath?: string;
+  /** 默认选用的模型组件（服务启动时由 ASSEMBLER_MODEL_COMPONENT 注入） */
   modelComponent?: string;
   createSession?: (options: RealSessionOptions) => Promise<PiSession>;
 }
@@ -71,51 +68,58 @@ export function mergeSkillOverrides(repo: Skill[]) {
   });
 }
 
-/**
- * pi 原生结构化输出工具：模型以 structured_output 工具调用收尾（terminate），
- * 参数即配方 JSON；产出前用配方契约 schema + catalog 自校验。
- */
-export function buildStructuredOutputTool(
-  catalog: ComponentCatalog,
-): ToolDefinition<typeof RECIPE_PARAMS_SCHEMA, Recipe> {
-  return defineTool({
-    name: "structured_output",
-    label: "Structured Output (Recipe)",
-    description:
-      "Return the final recipe as a single JSON object conforming to the recipe schema. Use this as the last action; the output is validated and returned as a Recipe.",
-    promptSnippet: "Emit the final recipe as a terminating structured_output call",
-    promptGuidelines: [
-      "Use structured_output as your final action to emit the recipe JSON.",
-      "The recipe must reference only components from the catalog and pass schema validation.",
-    ],
-    parameters: RECIPE_PARAMS_SCHEMA,
-    async execute(_toolCallId: string, params) {
-      const recipe = constrainToRecipe(JSON.stringify(params), catalog);
-      return {
-        content: [{ type: "text", text: `Recipe produced: ${recipe.name}` }],
-        details: recipe,
-        terminate: true,
-      };
-    },
-  });
+/** 剥掉模型可能套的 markdown 代码块围栏（```python ... ```），只留纯 Python 源码 */
+export function stripCodeFence(text: string): string {
+  const match = /^```(?:python)?\s*\r?\n([\s\S]*?)\r?\n```\s*$/.exec(text.trim());
+  return match ? match[1]! : text;
 }
 
-function buildPiPrompt(requirement: string, skills: Skill[]): string {
+/** 组件使用说明块：从 catalog 取各组件 description/class_name + 参数规格，注入 prompt 供模型写码 */
+function componentUsageNotes(catalog: ComponentCatalog): string {
+  const lines = catalog.components.map((entry) => {
+    const params = Object.entries(entry.params)
+      .map(([name, spec]) => {
+        const bits = [name, `type=${spec.type}`];
+        if (spec.enum) {
+          bits.push(`enum=[${spec.enum.join(", ")}]`);
+        }
+        if (spec.default !== undefined && spec.default !== null) {
+          bits.push(`default=${JSON.stringify(spec.default)}`);
+        }
+        return bits.join(", ");
+      })
+      .join("；");
+    const cls = entry.class_name ? `（${entry.class_name}）` : "";
+    const desc = entry.description ? `：${entry.description}` : "";
+    const paramLine = params.length > 0 ? `\n  参数：${params}` : "";
+    return `- ${entry.id}@${entry.version}${cls}${desc}${paramLine}`;
+  });
+  return ["# 组件使用说明（demo 只允许引用以下注册组件）", ...lines].join("\n");
+}
+
+export function buildPiPrompt(
+  requirement: string,
+  skills: Skill[],
+  catalog: ComponentCatalog,
+  examplePath: string = DEFAULT_EXAMPLE_PATH,
+): string {
   const parts = [requirement];
   for (const skill of skills) {
     parts.push(skillContextBlock(skill));
   }
   parts.push(
-    "最后一步必须调用 structured_output 工具，把配方作为其参数返回；" +
-      "需求匹配设计知识 skill 时，先用 read 读完整 SKILL.md。",
+    "# 首个已知良好示例\n" +
+      `先 read \`${examplePath}\` 查看标准 demo 形态：三件套（模型管理 + 上下文管理 + 工具调用）+ 薄容器（agent-single），` +
+      "组件构造调用用关键字参数，最后暴露 run(user_message: str) -> str。以此为标准，按需求改出新的 demo 代码。",
   );
+  parts.push(componentUsageNotes(catalog));
   parts.push(ASSEMBLER_OPERATING_RULES);
   return parts.join("\n\n");
 }
 
 /**
  * 真实 pi 会话：DefaultResourceLoader 注入仓库 skill（skillsOverride），
- * customTools 挂 structured_output；跑完回合后从 tool_execution_end 事件取配方。
+ * 只开 read/grep 让模型读示例与组件；跑完回合从最后一条 assistant 消息取 demo 代码。
  */
 export async function createRealPiSession(
   options: RealSessionOptions,
@@ -126,36 +130,22 @@ export async function createRealPiSession(
     agentDir: options.agentDir,
     skillsOverride: mergeSkillOverrides(repoSkills),
   });
-  const tool = buildStructuredOutputTool(options.catalog);
   const { session } = await createAgentSession({
     cwd: options.cwd,
     resourceLoader: loader,
     model: options.model as CreateAgentSessionOptions["model"],
     tools: ["read", "grep"],
-    customTools: [tool as unknown as ToolDefinition],
     sessionManager: SessionManager.inMemory(options.cwd),
   });
 
   return {
-    async run(prompt: string): Promise<Recipe> {
-      let recipe: unknown;
-      const unsubscribe = session.subscribe((event) => {
-        if (
-          event.type === "tool_execution_end" &&
-          event.toolName === "structured_output"
-        ) {
-          recipe = event.result?.details;
-        }
-      });
-      try {
-        await session.sendUserMessage(prompt);
-      } finally {
-        unsubscribe();
+    async run(prompt: string): Promise<string> {
+      await session.sendUserMessage(prompt);
+      const code = session.getLastAssistantText();
+      if (!code || code.trim() === "") {
+        throw new Error("pi session finished without demo code output");
       }
-      if (!recipe) {
-        throw new Error("pi session finished without a structured_output recipe");
-      }
-      return constrainToRecipe(JSON.stringify(recipe), options.catalog);
+      return stripCodeFence(code);
     },
   };
 }
@@ -167,6 +157,7 @@ export class PiDriver implements AssemblerDriver {
   private readonly cwd: string;
   private readonly agentDir: string;
   private readonly model: unknown;
+  private readonly examplePath: string;
   private readonly modelComponent: string;
   private readonly createSession: (options: RealSessionOptions) => Promise<PiSession>;
   private readonly skills: Skill[] = [];
@@ -178,6 +169,7 @@ export class PiDriver implements AssemblerDriver {
     this.cwd = options.cwd ?? process.cwd();
     this.agentDir = options.agentDir ?? getAgentDir();
     this.model = options.model;
+    this.examplePath = options.examplePath ?? DEFAULT_EXAMPLE_PATH;
     this.modelComponent = options.modelComponent ?? "model-openai";
     this.createSession = options.createSession ?? createRealPiSession;
     try {
@@ -196,19 +188,19 @@ export class PiDriver implements AssemblerDriver {
     const { acquisition, loaded } = runAcquire(requirement, answers, {
       clarify: (text) => needsClarification(text, this.catalog, this.modelComponent),
       matchSkills: (text) => this.matchedSkills(text),
-      buildPrompt: (text, matched) => buildPiPrompt(text, matched),
+      buildPrompt: (text, matched) =>
+        buildPiPrompt(text, matched, this.catalog, this.examplePath),
       toSkillReference: (skill) => ({ name: skill.name, source: "pi" as const }),
     });
     this.loaded = loaded;
     return acquisition;
   }
 
-  async convert(prompt: string): Promise<Recipe> {
+  async convert(prompt: string): Promise<string> {
     const session = await this.createSession({
       cwd: this.cwd,
       agentDir: this.agentDir,
       skillsDir: this.skillsDir,
-      catalog: this.catalog,
       model: this.model,
     });
     return session.run(prompt);

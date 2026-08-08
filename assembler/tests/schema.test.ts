@@ -13,7 +13,7 @@ const VALID = {
   parameters: { "model-openai": { temperature: 0.7 } },
 };
 
-test("schema: recipe-schema.json is the single source consumed by TS", () => {
+test("schema: transient spec schema is defined locally (no contracts file)", () => {
   const schema = loadRecipeSchema() as {
     $schema: string;
     type: string;

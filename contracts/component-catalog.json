@@ -1,0 +1,203 @@
+{
+  "components": [
+    {
+      "id": "agent-single",
+      "version": "1.0",
+      "description": "单体 agent 薄容器组件：编排模型、上下文与工具执行器，负责工具循环与停止条件。",
+      "role": "agent",
+      "class_name": "Agent",
+      "inputs": [
+        {
+          "name": "user_message",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "reply",
+          "type": "string"
+        }
+      ],
+      "params": {
+        "max_iterations": {
+          "type": "integer",
+          "default": 5,
+          "enum": null,
+          "min": 1,
+          "max": null
+        }
+      }
+    },
+    {
+      "id": "context-window",
+      "version": "1.0",
+      "description": "上下文窗口组件：维护对话消息列表，支持轮次截断与 system prompt 注入。",
+      "role": "context",
+      "class_name": "ContextWindow",
+      "inputs": [
+        {
+          "name": "user_message",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "messages",
+          "type": "MessageList"
+        }
+      ],
+      "params": {
+        "max_rounds": {
+          "type": "integer",
+          "default": 5,
+          "enum": null,
+          "min": 1,
+          "max": null
+        },
+        "strategy": {
+          "type": "string",
+          "default": "truncate",
+          "enum": [
+            "truncate"
+          ],
+          "min": null,
+          "max": null
+        }
+      }
+    },
+    {
+      "id": "model-ollama",
+      "version": "1.0",
+      "description": "本地 Ollama 大模型封装组件：OpenAI 兼容 client 指向本地服务，支持原生工具调用与 token 上报。",
+      "role": "model",
+      "class_name": "OllamaModel",
+      "inputs": [
+        {
+          "name": "messages",
+          "type": "MessageList"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "string"
+        }
+      ],
+      "params": {
+        "model": {
+          "type": "string",
+          "default": "llama3",
+          "enum": null,
+          "min": null,
+          "max": null
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0.7,
+          "enum": null,
+          "min": 0.0,
+          "max": 2.0
+        },
+        "max_tokens": {
+          "type": "number",
+          "default": 1024,
+          "enum": null,
+          "min": 1,
+          "max": 16384
+        },
+        "base_url": {
+          "type": "string",
+          "default": "http://localhost:11434/v1",
+          "enum": null,
+          "min": null,
+          "max": null
+        }
+      }
+    },
+    {
+      "id": "model-openai",
+      "version": "1.0",
+      "description": "OpenAI 兼容大模型封装组件：接收消息列表，透传原生工具 schema，返回回复文本或结构化工具调用。",
+      "role": "model",
+      "class_name": "OpenAIModel",
+      "inputs": [
+        {
+          "name": "messages",
+          "type": "MessageList"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "string"
+        }
+      ],
+      "params": {
+        "model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "enum": [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro"
+          ],
+          "min": null,
+          "max": null
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0.7,
+          "enum": null,
+          "min": 0.0,
+          "max": 2.0
+        },
+        "max_tokens": {
+          "type": "number",
+          "default": 1024,
+          "enum": null,
+          "min": 1,
+          "max": 16384
+        }
+      }
+    },
+    {
+      "id": "tool-caller",
+      "version": "1.0",
+      "description": "工具执行器组件：按工具名查表执行已声明工具，返回结构化执行结果。",
+      "role": "tools",
+      "class_name": "ToolCaller",
+      "inputs": [
+        {
+          "name": "tool_call",
+          "type": "ToolCallRequest"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "ToolCallResult"
+        }
+      ],
+      "params": {
+        "tools": {
+          "type": "list",
+          "default": [],
+          "enum": null,
+          "min": null,
+          "max": null
+        },
+        "strategy": {
+          "type": "string",
+          "default": "strict",
+          "enum": [
+            "strict",
+            "lenient"
+          ],
+          "min": null,
+          "max": null
+        }
+      }
+    }
+  ]
+}

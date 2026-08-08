@@ -1,17 +1,53 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// 瞬态 spec（配方结构）的本地 JSON Schema 定义（ADR-0005）。
+// 组装器生成 demo 代码前产出的 spec 只用做生成时结构校验，校验后即弃；
+// 不再依赖 contracts/recipe-schema.json（该契约文件已随配方机制一起废除）。
 
-const SCHEMA_URL = new URL("../../contracts/recipe-schema.json", import.meta.url);
-
-let _schema: Record<string, any> | undefined;
+const RECIPE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "Agent Infra transient spec",
+  description:
+    "组装器生成 demo 前的瞬态组件/参数/连线声明结构，仅作生成时校验与写码参考，校验后即弃。",
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    components: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "version"],
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          version: { type: "string" },
+        },
+      },
+    },
+    connections: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["from", "to"],
+        additionalProperties: false,
+        properties: {
+          from: { type: "string" },
+          to: { type: "string" },
+        },
+      },
+    },
+    parameters: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: true,
+      },
+    },
+  },
+  required: ["components", "connections", "parameters"],
+  additionalProperties: false,
+} as const;
 
 export function loadRecipeSchema(): Record<string, any> {
-  if (_schema) {
-    return _schema;
-  }
-  const raw = readFileSync(fileURLToPath(SCHEMA_URL), "utf8");
-  _schema = JSON.parse(raw) as Record<string, any>;
-  return _schema;
+  return RECIPE_SCHEMA as unknown as Record<string, any>;
 }
 
 type Node = Record<string, any>;
@@ -64,5 +100,5 @@ function validateNode(value: unknown, schema: Node, path: string): void {
 }
 
 export function validateStructure(value: unknown): void {
-  validateNode(value, loadRecipeSchema(), "recipe");
+  validateNode(value, RECIPE_SCHEMA as unknown as Node, "recipe");
 }

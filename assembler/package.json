@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "组装器（TS）：需求→配方转换核心 + structured-output 工具",
+  "description": "组装器（TS）：需求→demo 代码（直接产出，代码即真相源）核心 + pi/local 驱动",
   "scripts": {
     "test": "node --test tests/*.test.ts",
     "pretest": "tsc -p tsconfig.json",

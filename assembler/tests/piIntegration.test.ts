@@ -3,36 +3,32 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 import { assembleRequirement, assembleWithAnswers } from "../src/assemble.ts";
-import { DEFAULT_CATALOG } from "../src/catalog.ts";
 import { PiDriver } from "../src/piDriver.ts";
-import type { Recipe } from "../src/recipe.ts";
-import { validateStructure } from "../src/schema.ts";
-import { validateParams } from "../src/validate.ts";
 
 const SKILLS_DIR = join(process.cwd(), "..", "skills");
 
-const VALID_RECIPE: Recipe = {
-  name: "weather-agent",
-  components: [
-    { id: "context-window", version: "1.0" },
-    { id: "model-openai", version: "1.0" },
-    { id: "tool-caller", version: "1.0" },
-  ],
-  connections: [
-    { from: "context-window", to: "model-openai" },
-    { from: "model-openai", to: "tool-caller" },
-  ],
-  parameters: { "model-openai": { temperature: 0.5 } },
-};
+const DEMO_CODE = [
+  "from components.agent import Agent, register_agent",
+  "from components.context import ContextWindow, register_context",
+  "from components.model import OpenAIModel, register_model",
+  "",
+  "context_window = ContextWindow(max_rounds=5, strategy=\"truncate\")",
+  "model = OpenAIModel(model=\"gpt-4o-mini\", temperature=0.7, max_tokens=1024)",
+  "agent_single = Agent(model=model, context=context_window, tools=None, max_iterations=3)",
+  "",
+  "def run(user_message: str) -> str:",
+  "    return agent_single.run(user_message)",
+  "",
+].join("\n");
 
-test("pi 集成: 需求→配方全流程（注入 mock 会话，不依赖真实模型）", async () => {
+test("pi 集成: 需求→demo 代码全流程（注入 mock 会话，不依赖真实模型）", async () => {
   const seen: string[] = [];
   const driver = new PiDriver({
     skillsDir: SKILLS_DIR,
     createSession: async () => ({
-      run: async (prompt: string): Promise<Recipe> => {
+      run: async (prompt: string): Promise<string> => {
         seen.push(prompt);
-        return structuredClone(VALID_RECIPE) as Recipe;
+        return DEMO_CODE;
       },
     }),
   });
@@ -41,23 +37,22 @@ test("pi 集成: 需求→配方全流程（注入 mock 会话，不依赖真实
 
   assert.equal(result.status, "recipe");
   if (result.status === "recipe") {
-    assert.doesNotThrow(() => validateStructure(result.recipe));
-    assert.doesNotThrow(() => validateParams(result.recipe, DEFAULT_CATALOG));
+    assert.match(result.code, /def run\(user_message: str\)/);
+    assert.equal(result.spec, null, "pi 驱动不产瞬态 spec → null");
     assert.equal(result.buildNote.skillUsed, "agent-design");
-    assert.ok(result.buildNote.decisions.length > 0);
   }
   assert.equal(seen.length, 1);
-  assert.match(seen[0]!, /structured_output/);
-  assert.match(seen[0]!, /不写 demo 代码/);
+  assert.match(seen[0]!, /demos\/calculator_agent\.py/);
+  assert.match(seen[0]!, /只产出 demo 代码/);
 });
 
 test("pi 集成: 模糊需求走澄清分支，不创建会话不进模型", async () => {
   let sessionRuns = 0;
   const driver = new PiDriver({
     createSession: async () => ({
-      run: async (): Promise<Recipe> => {
+      run: async (): Promise<string> => {
         sessionRuns += 1;
-        return structuredClone(VALID_RECIPE) as Recipe;
+        return DEMO_CODE;
       },
     }),
   });
@@ -71,13 +66,13 @@ test("pi 集成: 模糊需求走澄清分支，不创建会话不进模型", asy
   assert.equal(sessionRuns, 0, "澄清分支不应进入模型会话");
 });
 
-test("pi 集成: 澄清 → 回答 → 配方闭环（answers 并入会话 prompt）", async () => {
+test("pi 集成: 澄清 → 回答 → demo 代码闭环（answers 并入会话 prompt）", async () => {
   const seen: string[] = [];
   const driver = new PiDriver({
     createSession: async () => ({
-      run: async (prompt: string): Promise<Recipe> => {
+      run: async (prompt: string): Promise<string> => {
         seen.push(prompt);
-        return structuredClone(VALID_RECIPE) as Recipe;
+        return DEMO_CODE;
       },
     }),
   });

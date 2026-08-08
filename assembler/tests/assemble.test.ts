@@ -10,8 +10,6 @@ import {
 import type { Answers } from "../src/clarify.ts";
 import type { Acquisition, AssemblerDriver, SkillReference } from "../src/driver.ts";
 import type { Recipe } from "../src/recipe.ts";
-import { validateStructure } from "../src/schema.ts";
-import { validateParams } from "../src/validate.ts";
 
 const VALID_RECIPE: Recipe = {
   name: "weather-agent",
@@ -27,7 +25,25 @@ const VALID_RECIPE: Recipe = {
   parameters: { "model-openai": { temperature: 0.5 } },
 };
 
-type MockResult = { questions: string[] } | { recipe: Recipe };
+const DEMO_CODE = [
+  "from components.agent import Agent, register_agent",
+  "from components.context import ContextWindow, register_context",
+  "from components.model import OpenAIModel, register_model",
+  "from components.tools import Tool, ToolCaller, register_tool_caller",
+  "",
+  "context_window = ContextWindow(max_rounds=5, strategy=\"truncate\")",
+  "model = OpenAIModel(model=\"gpt-4o-mini\", temperature=0.7, max_tokens=1024)",
+  "tool_caller = ToolCaller(tools=[], strategy=\"strict\")",
+  "agent_single = Agent(model=model, context=context_window, tools=tool_caller, max_iterations=3)",
+  "",
+  "def run(user_message: str) -> str:",
+  "    return agent_single.run(user_message)",
+  "",
+].join("\n");
+
+type MockResult =
+  | { questions: string[] }
+  | { code: string; spec?: Recipe | null };
 
 class MockDriver implements AssemblerDriver {
   readonly kind = "local" as const;
@@ -47,30 +63,34 @@ class MockDriver implements AssemblerDriver {
     return { status: "ready", prompt: requirement };
   }
 
-  async convert(prompt: string): Promise<Recipe> {
+  async convert(prompt: string): Promise<string> {
     this.converted.push(prompt);
-    if (!("recipe" in this.result)) {
+    if (!("code" in this.result)) {
       throw new Error("convert should not run while clarifying");
     }
-    return structuredClone(this.result.recipe) as Recipe;
+    return this.result.code;
+  }
+
+  async spec(_prompt: string): Promise<Recipe | null> {
+    return "spec" in this.result ? (this.result.spec ?? null) : null;
   }
 
   skillsUsed(): SkillReference[] {
-    return "recipe" in this.result
+    return "code" in this.result
       ? [{ name: "agent-design", source: "pi" }]
       : [];
   }
 }
 
-test("entry: a clear requirement runs acquire -> convert -> recipe + build note", async () => {
-  const driver = new MockDriver({ recipe: VALID_RECIPE });
+test("entry: a clear requirement runs acquire -> convert -> code + spec + build note", async () => {
+  const driver = new MockDriver({ code: DEMO_CODE, spec: VALID_RECIPE });
 
   const result = await assembleRequirement("会查天气的聊天 agent", { driver });
 
   assert.equal(result.status, "recipe");
   if (result.status === "recipe") {
-    assert.doesNotThrow(() => validateStructure(result.recipe));
-    assert.doesNotThrow(() => validateParams(result.recipe, DEFAULT_CATALOG));
+    assert.match(result.code, /def run\(user_message: str\)/);
+    assert.equal(result.spec?.name, "weather-agent");
     assert.equal(result.buildNote.skillUsed, "agent-design");
     assert.ok(result.buildNote.decisions.length > 0);
   }
@@ -91,7 +111,7 @@ test("entry: an ambiguous requirement returns questions and skips conversion", a
 });
 
 test("entry: assembleWithAnswers forwards answers and records them in the build note", async () => {
-  const driver = new MockDriver({ recipe: VALID_RECIPE });
+  const driver = new MockDriver({ code: DEMO_CODE, spec: VALID_RECIPE });
 
   const result = await assembleWithAnswers(
     "做一个带工具的 agent",
@@ -106,18 +126,22 @@ test("entry: assembleWithAnswers forwards answers and records them in the build 
   }
 });
 
-test("entry: a driver recipe failing schema self-check is rejected", async () => {
+test("entry: a bad transient spec does not block code output (code wins)", async () => {
   const invalid = { name: "x", connections: [], parameters: {} } as unknown as Recipe;
-  const driver = new MockDriver({ recipe: invalid });
+  const driver = new MockDriver({ code: DEMO_CODE, spec: invalid });
 
-  await assert.rejects(
-    () => assembleRequirement("会查天气的聊天 agent", { driver }),
-    /components/,
-  );
+  const result = await assembleRequirement("会查天气的聊天 agent", { driver });
+
+  assert.equal(result.status, "recipe");
+  if (result.status === "recipe") {
+    assert.match(result.code, /def run\(user_message: str\)/);
+    assert.equal(result.spec, null, "无效 spec 降级为 null，不阻塞代码产出");
+    assert.deepEqual(result.buildNote.decisions, []);
+  }
 });
 
 test("entry: build note explains the selected components and wiring", async () => {
-  const driver = new MockDriver({ recipe: VALID_RECIPE });
+  const driver = new MockDriver({ code: DEMO_CODE, spec: VALID_RECIPE });
 
   const result = await assembleRequirement("会查天气的聊天 agent", { driver });
 

@@ -56,22 +56,24 @@ function toolCallerReason(requirement: string, answers?: Answers): string {
 
 export function composeBuildNote(
   requirement: string,
-  recipe: Recipe,
+  recipe: Recipe | null,
   options: ComposeBuildNoteOptions = {},
 ): BuildNote {
-  const decisions: BuildDecision[] = recipe.components.map((component) => {
-    let reason = REASON_BY_ID[component.id] ?? "组件被需求选中并接入配方。";
-    if (component.id === "tool-caller") {
-      reason = toolCallerReason(requirement, options.answers);
-    }
-    return {
-      component: component.id,
-      role: ROLE_BY_ID[component.id] ?? "",
-      reason,
-      connections: connectionsFor(recipe, component.id),
-      keyParams: recipe.parameters[component.id] ?? {},
-    };
-  });
+  const decisions: BuildDecision[] = recipe
+    ? recipe.components.map((component) => {
+        let reason = REASON_BY_ID[component.id] ?? "组件被需求选中并接入配方。";
+        if (component.id === "tool-caller") {
+          reason = toolCallerReason(requirement, options.answers);
+        }
+        return {
+          component: component.id,
+          role: ROLE_BY_ID[component.id] ?? "",
+          reason,
+          connections: connectionsFor(recipe, component.id),
+          keyParams: recipe.parameters[component.id] ?? {},
+        };
+      })
+    : [];
 
   const notes: string[] = [];
   if (options.answers) {

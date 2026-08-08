@@ -43,7 +43,10 @@ class _Handler(BaseHTTPRequestHandler):
                 elif action == "ablations":
                     payload = self.runtime.trigger_ablation(demo_id, body)
                 elif action == "generate":
-                    payload = self.runtime.generate_demo(demo_id, body.get("recipe", {}))
+                    # ADR-0005：demo 代码是唯一真相源，generate 只收 { code }。
+                    payload = self.runtime.generate_demo_from_code(
+                        demo_id, body.get("code", "")
+                    )
                 else:
                     return self._error(405, "method not allowed")
                 return self._send_json(200, payload)

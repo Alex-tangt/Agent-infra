@@ -5,36 +5,30 @@ import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
 
 import { DEFAULT_CATALOG } from "../src/catalog.ts";
 import {
+  buildPiPrompt,
   buildSkillOverrides,
-  buildStructuredOutputTool,
   mergeSkillOverrides,
   PiDriver,
+  stripCodeFence,
+  DEFAULT_EXAMPLE_PATH,
   type PiSession,
 } from "../src/piDriver.ts";
-import type { Recipe } from "../src/recipe.ts";
-import { validateStructure } from "../src/schema.ts";
 
 const SKILLS_DIR = join(process.cwd(), "..", "skills");
 
-function asRecipeArgs(recipe: Recipe) {
-  return recipe as unknown as Parameters<
-    ReturnType<typeof buildStructuredOutputTool>["execute"]
-  >[1];
-}
-
-const VALID_RECIPE: Recipe = {
-  name: "weather-agent",
-  components: [
-    { id: "context-window", version: "1.0" },
-    { id: "model-openai", version: "1.0" },
-    { id: "tool-caller", version: "1.0" },
-  ],
-  connections: [
-    { from: "context-window", to: "model-openai" },
-    { from: "model-openai", to: "tool-caller" },
-  ],
-  parameters: { "model-openai": { temperature: 0.5 } },
-};
+const DEMO_CODE = [
+  "from components.agent import Agent, register_agent",
+  "from components.context import ContextWindow, register_context",
+  "from components.model import OpenAIModel, register_model",
+  "",
+  "context_window = ContextWindow(max_rounds=5, strategy=\"truncate\")",
+  "model = OpenAIModel(model=\"gpt-4o-mini\", temperature=0.7, max_tokens=1024)",
+  "agent_single = Agent(model=model, context=context_window, tools=None, max_iterations=3)",
+  "",
+  "def run(user_message: str) -> str:",
+  "    return agent_single.run(user_message)",
+  "",
+].join("\n");
 
 test("piDriver: kind is pi", () => {
   const driver = new PiDriver({});
@@ -53,35 +47,61 @@ test("piDriver: a vague tool requirement raises questions", async () => {
   }
 });
 
-test("piDriver: a clear requirement yields a ready prompt with skill + rules", async () => {
+test("piDriver: a clear requirement yields a ready prompt with example path + rules", async () => {
   const driver = new PiDriver({ skillsDir: SKILLS_DIR });
 
   const acquisition = await driver.acquire("会查天气的聊天 agent");
 
   assert.equal(acquisition.status, "ready");
   if (acquisition.status === "ready") {
-    assert.match(acquisition.prompt, /structured_output/);
-    assert.match(acquisition.prompt, /不写 demo 代码/);
+    assert.match(acquisition.prompt, /demos\/calculator_agent\.py/);
+    assert.match(acquisition.prompt, /只产出 demo 代码/);
+    assert.match(acquisition.prompt, /run\(user_message: str\)/);
     assert.match(acquisition.prompt, /agent-design/);
   }
 });
 
-test("piDriver: convert runs the injected pi session and returns the recipe", async () => {
+test("piDriver: buildPiPrompt injects the example path, rules and component usage notes", () => {
+  const prompt = buildPiPrompt(
+    "会查天气的聊天 agent",
+    [],
+    DEFAULT_CATALOG,
+    DEFAULT_EXAMPLE_PATH,
+  );
+
+  assert.match(prompt, /会查天气的聊天 agent/);
+  assert.match(prompt, /demos\/calculator_agent\.py/);
+  assert.match(prompt, /只产出 demo 代码/);
+  assert.match(prompt, /组件使用说明/);
+  assert.match(prompt, /agent-single/);
+});
+
+test("piDriver: stripCodeFence removes a python fence and keeps the code", () => {
+  const fenced = "```python\n" + DEMO_CODE + "\n```";
+
+  assert.equal(stripCodeFence(fenced), DEMO_CODE);
+});
+
+test("piDriver: stripCodeFence leaves plain text untouched", () => {
+  assert.equal(stripCodeFence(DEMO_CODE), DEMO_CODE);
+});
+
+test("piDriver: convert runs the injected pi session and returns the demo code", async () => {
   let seen = "";
   const session: PiSession = {
-    async run(prompt: string): Promise<Recipe> {
+    async run(prompt: string): Promise<string> {
       seen = prompt;
-      return structuredClone(VALID_RECIPE) as Recipe;
+      return DEMO_CODE;
     },
   };
   const driver = new PiDriver({
     createSession: async () => session,
   });
 
-  const recipe = await driver.convert("会查天气的聊天 agent");
+  const code = await driver.convert("会查天气的聊天 agent");
 
-  assert.equal(recipe.name, "weather-agent");
-  assert.doesNotThrow(() => validateStructure(recipe));
+  assert.equal(code, DEMO_CODE);
+  assert.match(code, /def run\(user_message: str\)/);
   assert.equal(seen, "会查天气的聊天 agent");
 });
 
@@ -94,35 +114,6 @@ test("piDriver: an agent-like requirement marks the skill as pi-loaded", async (
   assert.equal(used.length, 1);
   assert.equal(used[0]!.name, "agent-design");
   assert.equal(used[0]!.source, "pi");
-});
-
-test("pi: the structured_output tool terminates and returns the recipe as details", async () => {
-  const tool = buildStructuredOutputTool(DEFAULT_CATALOG);
-
-  assert.equal(tool.name, "structured_output");
-  const result = await tool.execute(
-    "1",
-    asRecipeArgs(structuredClone(VALID_RECIPE) as Recipe),
-    undefined,
-    undefined,
-    undefined as never,
-  );
-
-  assert.equal(result.terminate, true);
-  assert.deepEqual(result.details, VALID_RECIPE);
-});
-
-test("pi: the structured_output tool rejects an out-of-catalog component", async () => {
-  const tool = buildStructuredOutputTool(DEFAULT_CATALOG);
-
-  const ghost = structuredClone(VALID_RECIPE) as Recipe;
-  ghost.components.push({ id: "ghost-component", version: "1.0" });
-
-  await assert.rejects(
-    () =>
-      tool.execute("1", asRecipeArgs(ghost), undefined, undefined, undefined as never),
-    /not in catalog/,
-  );
 });
 
 test("pi: buildSkillOverrides discovers the repo skill via pi's native loader", () => {

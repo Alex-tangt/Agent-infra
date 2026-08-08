@@ -48,12 +48,15 @@ export function runAcquire<TMatch = SkillReference>(
 
 /**
  * 组装器编排的对话驱动接缝：采集（需求输入）→ 澄清（是否缺信息）
- * → 转换（需求文本 → 配方）。pi 驱动走 pi 会话 + 原生 skill 加载；
- * 本地驱动走确定性转换 + prompt 注入，测试用 mock 驱动替换。
+ * → 转换（需求文本 → demo 代码）。pi 驱动走 pi 会话 + 原生 skill 加载；
+ * 本地驱动走确定性转换（复用已知良好示例）+ 澄清，测试用 mock 驱动替换。
  */
 export interface AssemblerDriver {
   readonly kind: DriverKind;
   acquire(requirement: string, answers?: Answers): Promise<Acquisition>;
-  convert(prompt: string): Promise<Recipe>;
+  /** 转换：需求文本 → demo 代码（Python 源码字符串），代码是唯一真相源 */
+  convert(prompt: string): Promise<string>;
+  /** 瞬态 spec（可空）：生成时校验用，仅作参考，不持久、不追代码、非真相源 */
+  spec?(prompt: string): Promise<Recipe | null>;
   skillsUsed(): SkillReference[];
 }

@@ -14,7 +14,14 @@ export interface AssembleDeps {
 
 export type AssembleResult =
   | { status: "clarify"; questions: string[] }
-  | { status: "recipe"; recipe: Recipe; buildNote: BuildNote };
+  | {
+      status: "recipe";
+      /** demo 代码（Python 源码字符串）：唯一真相源 */
+      code: string;
+      /** 瞬态 spec：生成时校验用，可 null；不持久、不追代码、非真相源 */
+      spec: Recipe | null;
+      buildNote: BuildNote;
+    };
 
 async function runFlow(
   requirement: string,
@@ -30,20 +37,31 @@ async function runFlow(
     return { status: "clarify", questions: acquisition.questions };
   }
 
-  // 转换：需求文本 → 配方
-  const recipe = await driver.convert(acquisition.prompt);
+  // 转换：需求文本 → demo 代码（代码是唯一真相源）
+  const code = await driver.convert(acquisition.prompt);
 
-  // 输出：配方 JSON 自校验（结构 + 参数），不合法不产出
-  validateStructure(recipe);
-  validateParams(recipe, catalog);
+  // 瞬态 spec：驱动可产可空；校验失败不阻塞代码产出（最终以代码为准，spec 只是生成时参考）
+  let spec: Recipe | null = null;
+  if (driver.spec) {
+    try {
+      const candidate = await driver.spec(acquisition.prompt);
+      if (candidate) {
+        validateStructure(candidate);
+        validateParams(candidate, catalog);
+      }
+      spec = candidate;
+    } catch {
+      spec = null;
+    }
+  }
 
   // 组装记录：选了什么组件、为什么这么连、关键参数 + 澄清答案
-  const buildNote = composeBuildNote(requirement, recipe, {
+  const buildNote = composeBuildNote(requirement, spec, {
     answers,
     skills: driver.skillsUsed(),
   });
 
-  return { status: "recipe", recipe, buildNote };
+  return { status: "recipe", code, spec, buildNote };
 }
 
 export async function assembleRequirement(
