@@ -1,5 +1,6 @@
 import type { Recipe } from "../api/contract.ts";
 import type { DemoApi } from "../api/contract.ts";
+import type { BuildNote } from "../api/assemblerContract.ts";
 import type {
   Answers,
   AssembleOutcome,
@@ -9,22 +10,75 @@ import type {
 // 生成 demo 依赖的后端入口（测试接缝）：与 DemoApi 共享，MockDemoApi 与 DemoApiClient 均满足。
 export type GenerateDemoApi = Pick<DemoApi, "generateDemo">;
 
-// 骨架默认组装器：无组装器服务时也能产出可运行配方，与 MockDemoApi 同一套 mock 思路。
+// 骨架默认组装器：无组装器服务时也能产出可运行 demo 代码，与 MockDemoApi 同一套 mock 思路。
 // 接口见 assemblerContract.AssemblerPort（真实实现是 HTTP 客户端 AssemblerApiClient）。
 export class MockAssembler implements AssemblerPort {
   async assemble(_requirement: string): Promise<AssembleOutcome> {
-    return { status: "recipe", recipe: mockRecipe() };
+    return {
+      status: "recipe",
+      code: MOCK_DEMO_CODE,
+      spec: mockSpec(),
+      buildNote: mockBuildNote(),
+    };
   }
 
   async assembleWithAnswers(
     _requirement: string,
     _answers: Answers,
   ): Promise<AssembleOutcome> {
-    return { status: "recipe", recipe: mockRecipe() };
+    return {
+      status: "recipe",
+      code: MOCK_DEMO_CODE,
+      spec: mockSpec(),
+      buildNote: mockBuildNote(),
+    };
   }
 }
 
-function mockRecipe(): Recipe {
+// 骨架组装器直接产出的极简 demo 代码（Python 字符串）：三件套 + 薄容器，代码即真相源。
+// 与 demos/calculator_agent.py 同构：能过 AST 校验器，且可被 Python 运行时直接执行。
+const MOCK_DEMO_CODE = `# 极简 agent demo（mock 组装器产出）：三件套 + 薄容器，代码即真相源。
+from components.agent import Agent, register_agent
+from components.context import ContextWindow, register_context
+from components.model import OpenAIModel, register_model
+from components.tools import Tool, ToolCaller, register_tool_caller
+
+register_context()
+register_model()
+register_tool_caller()
+register_agent()
+
+
+def echo(text: str) -> str:
+    return "已收到：" + text
+
+
+context_window = ContextWindow(max_rounds=5, strategy="truncate")
+model_openai = OpenAIModel(model="gpt-4o-mini", temperature=0.7, max_tokens=1024)
+tool_caller = ToolCaller(
+    tools=[
+        Tool(
+            name="echo",
+            description="把用户输入原样回显",
+            parameters={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+            },
+            func=echo,
+        )
+    ],
+    strategy="strict",
+)
+agent_single = Agent(
+    model=model_openai,
+    context=context_window,
+    tools=tool_caller,
+    max_iterations=3,
+)
+`;
+
+// mock 的瞬态 spec：仅作生成时校验与展示参考（组件/连线/参数清单），非真相源。
+function mockSpec(): Recipe {
   return {
     name: "mock-agent",
     components: [
@@ -45,39 +99,35 @@ function mockRecipe(): Recipe {
   };
 }
 
+function mockBuildNote(): BuildNote {
+  return {
+    requirement: "mock 需求",
+    skillUsed: null,
+    decisions: [],
+    notes: [],
+  };
+}
+
 export interface AssemblerPanelState {
   requirement: string;
   questions: string[] | null;
-  recipe: Recipe | null;
-  json: string;
+  /** demo 代码（Python 源码字符串）：面板的主产物，可编辑后一键生成运行 */
+  code: string;
+  /** 瞬态 spec（组件清单等）：可选展示参考，非主产物 */
+  spec: Recipe | null;
   error: string | null;
   pending: boolean;
   generating: boolean;
   demoStatus: string | null;
 }
 
-function isRecipe(value: unknown): value is Recipe {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.components)) return false;
-  if (!Array.isArray(record.connections)) return false;
-  if (typeof record.parameters !== "object" || record.parameters === null) return false;
-  return record.components.every(
-    (c) =>
-      typeof c === "object" &&
-      c !== null &&
-      typeof (c as Record<string, unknown>).id === "string" &&
-      typeof (c as Record<string, unknown>).version === "string",
-  );
-}
-
-// 组装会话：输入需求 → 调组装器得到配方（真实链路经 HTTP 服务，澄清问题先问后答）
-// → 手动粘贴/编辑配方 JSON → 一键生成 demo。
+// 组装会话：输入需求 → 调组装器得到 demo 代码（真实链路经 HTTP 服务，澄清问题先问后答）
+// → 手动编辑代码 → 一键生成 demo。
 export class AssemblerSession {
   private requirement = "";
   private questions: string[] | null = null;
-  private recipe: Recipe | null = null;
-  private json = "";
+  private code = "";
+  private spec: Recipe | null = null;
   private error: string | null = null;
   private pending = false;
   private generating = false;
@@ -96,8 +146,8 @@ export class AssemblerSession {
     return {
       requirement: this.requirement,
       questions: this.questions,
-      recipe: this.recipe,
-      json: this.json,
+      code: this.code,
+      spec: this.spec,
       error: this.error,
       pending: this.pending,
       generating: this.generating,
@@ -109,7 +159,7 @@ export class AssemblerSession {
     this.requirement = text;
   }
 
-  // 生成配方：一次调用可能返回澄清问题（needsClarification）而非配方，
+  // 生成 demo 代码：一次调用可能返回澄清问题（needsClarification）而非代码，
   // 界面展示问题 → 用户回答 → answer() 带 answers 再次调用（assembleWithAnswers）。
   async generate(): Promise<void> {
     if (this.pending) return;
@@ -145,41 +195,30 @@ export class AssemblerSession {
   private applyOutcome(outcome: AssembleOutcome): void {
     if (outcome.status === "clarify") {
       this.questions = outcome.questions;
-      this.recipe = null;
-      this.json = "";
+      this.code = "";
+      this.spec = null;
       this.demoStatus = null;
       return;
     }
     this.questions = null;
-    this.recipe = outcome.recipe;
-    this.json = JSON.stringify(outcome.recipe, null, 2);
+    this.code = outcome.code;
+    this.spec = outcome.spec;
     this.demoStatus = null;
   }
 
-  loadJson(text: string): void {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      this.error = "配方 JSON 无效";
-      return;
-    }
-    if (!isRecipe(parsed)) {
-      this.error = "配方结构不符合契约（需要 components/connections/parameters）";
-      return;
-    }
-    this.recipe = parsed;
-    this.json = JSON.stringify(parsed, null, 2);
+  // 手动粘贴 / 编辑 demo 代码：代码是真相源，不做结构校验，直接采纳。
+  loadCode(text: string): void {
+    this.code = text;
     this.error = null;
     this.demoStatus = null;
   }
 
   async generateDemo(): Promise<void> {
-    if (this.generating || this.recipe === null) return;
+    if (this.generating || this.code === "") return;
     this.generating = true;
     this.error = null;
     try {
-      const res = await this.api.generateDemo(this.demoId, { recipe: this.recipe });
+      const res = await this.api.generateDemo(this.demoId, { code: this.code });
       this.demoStatus = `demo 已生成并运行（${res.demoId}，状态 ${res.status}）`;
     } finally {
       this.generating = false;
@@ -202,40 +241,41 @@ function fmtParamValue(value: unknown): string {
 
 export function renderAssemblerPanel(state: AssemblerPanelState): string {
   const pendingDisabled = state.pending ? " disabled" : "";
-  const noRecipe = state.recipe === null;
-  const generateDisabled = state.generating || noRecipe ? " disabled" : "";
+  const noCode = state.code === "";
+  const generateDisabled = state.generating || noCode ? " disabled" : "";
 
-  const viewHtml =
-    state.recipe === null
-      ? '<p class="empty-state">暂无配方。输入需求生成，或粘贴配方 JSON。</p>'
-      : `<div class="recipe-view">
-  <p class="recipe-name">配方：${escapeHtml(state.recipe.name ?? "（未命名）")}</p>
+  // spec 降级为参考信息：有值时展示组件清单（组件/连线/参数），真相源始终是 demo 代码。
+  const specHtml =
+    state.spec === null
+      ? '<p class="empty-state">暂无 spec（组装器未产出组件清单，仅以代码为准）。</p>'
+      : `<div class="spec-view">
+  <p class="spec-name">spec：${escapeHtml(state.spec.name ?? "（未命名）")}</p>
   <h3>组件</h3>
-  <ul class="recipe-components">${state.recipe.components
+  <ul class="spec-components">${state.spec.components
     .map(
       (c) =>
-        `<li class="recipe-component" data-component-id="${escapeHtml(c.id)}">${escapeHtml(c.id)}@${escapeHtml(c.version)}</li>`,
+        `<li class="spec-component" data-component-id="${escapeHtml(c.id)}">${escapeHtml(c.id)}@${escapeHtml(c.version)}</li>`,
     )
     .join("")}</ul>
   <h3>连线</h3>
-  <ul class="recipe-connections">${
-    state.recipe.connections.length === 0
+  <ul class="spec-connections">${
+    state.spec.connections.length === 0
       ? '<li class="empty-state">无连线。</li>'
-      : state.recipe.connections
+      : state.spec.connections
           .map(
             (c) =>
-              `<li class="recipe-connection" data-connection="${escapeHtml(c.from)}→${escapeHtml(c.to)}">${escapeHtml(c.from)} → ${escapeHtml(c.to)}</li>`,
+              `<li class="spec-connection" data-connection="${escapeHtml(c.from)}→${escapeHtml(c.to)}">${escapeHtml(c.from)} → ${escapeHtml(c.to)}</li>`,
           )
           .join("")
   }</ul>
   <h3>参数</h3>
-  <ul class="recipe-parameters">${
-    Object.keys(state.recipe.parameters).length === 0
+  <ul class="spec-parameters">${
+    Object.keys(state.spec.parameters).length === 0
       ? '<li class="empty-state">无参数。</li>'
-      : Object.entries(state.recipe.parameters)
+      : Object.entries(state.spec.parameters)
           .map(
             ([componentId, params]) =>
-              `<li class="recipe-parameter" data-component-id="${escapeHtml(componentId)}">${escapeHtml(componentId)}: ${Object.entries(params)
+              `<li class="spec-parameter" data-component-id="${escapeHtml(componentId)}">${escapeHtml(componentId)}: ${Object.entries(params)
                 .map(([k, v]) => `${escapeHtml(k)}=${fmtParamValue(v)}`)
                 .join(", ")}</li>`,
           )
@@ -260,12 +300,12 @@ export function renderAssemblerPanel(state: AssemblerPanelState): string {
   <h2>组装器</h2>
   <form class="assembler-requirement">
     <input name="requirement" type="text" value="${escapeHtml(state.requirement)}" placeholder="描述需求，如：会查天气的 agent"${pendingDisabled} />
-    <button type="submit"${pendingDisabled}>生成配方</button>
+    <button type="submit"${pendingDisabled}>生成 demo 代码</button>
   </form>
   ${questionHtml}
-  <form class="assembler-json">
-    <textarea name="json" rows="6" placeholder="或直接粘贴配方 JSON…"${pendingDisabled}>${escapeHtml(state.json)}</textarea>
-    <button type="submit"${pendingDisabled}>应用配方</button>
+  <form class="assembler-code">
+    <textarea name="code" rows="10" placeholder="demo 代码（Python，可直接编辑）…"${pendingDisabled}>${escapeHtml(state.code)}</textarea>
+    <button type="submit"${pendingDisabled}>应用代码</button>
   </form>
   <form class="demo-generate">
     <button type="submit"${generateDisabled}>生成 demo 并运行</button>
@@ -280,6 +320,6 @@ export function renderAssemblerPanel(state: AssemblerPanelState): string {
       ? `<p class="demo-status" data-demo-status="${escapeHtml(state.demoStatus)}">${escapeHtml(state.demoStatus)}</p>`
       : ""
   }
-  <div class="recipe-visual">${viewHtml}</div>
+  <div class="spec-visual">${specHtml}</div>
 </section>`;
 }

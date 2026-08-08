@@ -6,11 +6,9 @@ from eval.ablation import (
     ComponentSwap,
     EvaluationResult,
     ParameterOverride,
-    Variant,
     VariantResult,
-    build_variants,
     comparison_table,
-    run_ablation,
+    run_ablation_on_demo,
 )
 
 __all__ = [
@@ -21,9 +19,7 @@ __all__ = [
     "ComponentSwap",
     "EvaluationResult",
     "ParameterOverride",
-    "Variant",
     "VariantResult",
-    "build_variants",
     "comparison_table",
-    "run_ablation",
+    "run_ablation_on_demo",
 ]

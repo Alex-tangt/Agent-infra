@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from components.model import ModelReply, ToolCall
 from components.registry import register
+from components.tools.tool import ToolCallResult
 from components.types import ComponentSpec, ParamSpec, Port
 
 AGENT_SPEC = ComponentSpec(
@@ -83,6 +84,59 @@ def _assistant_tool_calls_payload(tool_calls: list[ToolCall]) -> list[dict]:
     ]
 
 
+_AGENT_PART_ROLES = ("model", "context", "tools")
+"""agent 零件角色白名单：运行时注入协议（ADR-0005 第 7 条）只认这三个 role。"""
+
+
+class _DisabledModel:
+    """运行时 disable 的模型零件：不再产生任何模型调用（消融 ComponentRemove 用）"""
+
+    def generate(self, messages, tools=None):
+        return ""
+
+
+class _DisabledContext:
+    """运行时 disable 的上下文零件：只记录消息，不做截断与 system prompt 注入"""
+
+    def __init__(self):
+        self._messages: list[dict] = []
+
+    def add_user_message(self, content: str) -> None:
+        self._messages.append({"role": "user", "content": content})
+
+    def add_assistant_message(
+        self, content: str, tool_calls: list[dict] | None = None
+    ) -> None:
+        message = {"role": "assistant", "content": content}
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+        self._messages.append(message)
+
+    def add_tool_message(self, content: str, tool_call_id: str | None = None) -> None:
+        message = {"role": "tool", "content": content}
+        if tool_call_id is not None:
+            message["tool_call_id"] = tool_call_id
+        self._messages.append(message)
+
+    def get_messages(self) -> list[dict]:
+        return list(self._messages)
+
+
+class _DisabledTools:
+    """运行时 disable 的工具零件：无可用工具，调用统一返回失败（消融 ComponentRemove 用）"""
+
+    def available_tools(self):
+        return []
+
+    def call(self, request) -> "ToolCallResult":
+        return ToolCallResult(
+            tool_name=getattr(request, "tool_name", ""),
+            success=False,
+            error="tool disabled",
+            tool_call_id=getattr(request, "tool_call_id", None),
+        )
+
+
 class Agent:
     def __init__(
         self,
@@ -106,6 +160,50 @@ class Agent:
         self._tools = tools
         self._turn_strategy = turn_strategy
         self._max_iterations = max_iterations
+
+    # --- 注入协议（ADR-0005 第 7 条）：消融等运行时机械调用，构造仍强制三件套 ---
+
+    def set_param(self, name: str, value) -> None:
+        """运行时参数覆盖：目前仅支持 max_iterations，其余参数抛 ValueError。"""
+        if name == "max_iterations":
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 1
+            ):
+                raise ValueError(
+                    f"max_iterations must be an integer >= 1, got {value!r}"
+                )
+            self._max_iterations = value
+            return
+        raise ValueError(
+            f"agent-single 不支持运行时参数 {name!r}（仅 max_iterations）"
+        )
+
+    def replace_part(self, role: str, instance) -> None:
+        """运行时替换零件（model/context/tools 之一），用于 ComponentSwap 消融。"""
+        if role not in _AGENT_PART_ROLES:
+            raise ValueError(
+                f"agent 零件 role 必须是 model/context/tools 之一，got {role!r}"
+            )
+        setattr(self, f"_{role}", instance)
+
+    def disable_part(self, role: str) -> None:
+        """运行时移除零件效果（model/context/tools 之一），用于 ComponentRemove 消融。
+
+        接受空零件：构造仍强制三件套，disable 是运行期行为，把对应零件换成
+        不报错的占位实现，agent 循环照常走通。
+        """
+        if role not in _AGENT_PART_ROLES:
+            raise ValueError(
+                f"agent 零件 role 必须是 model/context/tools 之一，got {role!r}"
+            )
+        if role == "model":
+            self._model = _DisabledModel()
+        elif role == "context":
+            self._context = _DisabledContext()
+        else:
+            self._tools = _DisabledTools()
 
     def run(self, user_message: str) -> str:
         self._context.add_user_message(user_message)

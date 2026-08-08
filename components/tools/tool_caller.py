@@ -9,6 +9,24 @@ class ToolCaller:
         self._tools = {tool.name: tool for tool in (tools or [])}
         self.strategy = strategy
 
+    def set_param(self, name: str, value) -> None:
+        """运行时参数覆盖（消融 ParameterOverride 用）：strategy 与 tools 可变。"""
+        if name == "strategy":
+            if value not in VALID_STRATEGIES:
+                raise ValueError(f"unsupported strategy: {value!r}")
+            self.strategy = value
+            return
+        if name == "tools":
+            if value is None:
+                value = []
+            if not isinstance(value, list):
+                raise ValueError(f"tools must be a list, got {value!r}")
+            self._tools = {tool.name: tool for tool in value}
+            return
+        raise ValueError(
+            f"tool-caller 不支持运行时参数 {name!r}（仅 strategy/tools）"
+        )
+
     def available_tools(self) -> list[Tool]:
         return list(self._tools.values())
 

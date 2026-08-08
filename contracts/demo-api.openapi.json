@@ -93,7 +93,7 @@
     },
     "/demo/{demoId}/generate": {
       "post": {
-        "summary": "用配方生成 demo 并运行（接线引擎入口）",
+        "summary": "收 demo 代码并运行（ADR-0005：代码是唯一真相源）",
         "parameters": [
           {
             "name": "demoId",
@@ -309,53 +309,11 @@
           "run": { "$ref": "#/components/schemas/AblationRun" }
         }
       },
-      "ComponentReference": {
-        "type": "object",
-        "required": ["id", "version"],
-        "additionalProperties": false,
-        "properties": {
-          "id": { "type": "string" },
-          "version": { "type": "string" }
-        }
-      },
-      "Connection": {
-        "type": "object",
-        "required": ["from", "to"],
-        "additionalProperties": false,
-        "properties": {
-          "from": { "type": "string" },
-          "to": { "type": "string" }
-        }
-      },
-      "Recipe": {
-        "description": "配方结构。权威单一来源是 contracts/recipe-schema.json（与 assembler/Python 侧共享）；本处为 OpenAPI 内联副本，须与之一致，见 tests/test_openapi_recipe_sync.py。",
-        "type": "object",
-        "required": ["components", "connections", "parameters"],
-        "additionalProperties": false,
-        "properties": {
-          "name": { "type": "string" },
-          "components": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/ComponentReference" }
-          },
-          "connections": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Connection" }
-          },
-          "parameters": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      },
       "GenerateDemoRequest": {
         "type": "object",
-        "required": ["recipe"],
+        "required": ["code"],
         "properties": {
-          "recipe": { "$ref": "#/components/schemas/Recipe" }
+          "code": { "type": "string" }
         }
       },
       "GenerateDemoResponse": {
@@ -379,7 +337,7 @@
           "baseUrl": { "type": "string" },
           "componentParams": {
             "type": "object",
-            "description": "组件级默认参数：组件 id → 参数名 → 值。生成 demo 时配方缺省的参数回退到这里。",
+            "description": "组件级默认参数：组件 id → 参数名 → 值。配方机制废除后不再自动回退到 demo 代码（ADR-0005），保留作运行环境配置的持久化字段。",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": true

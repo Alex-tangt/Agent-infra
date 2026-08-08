@@ -1,13 +1,14 @@
-"""issue #29 server 侧测试：运行环境配置持久化 / 掩码回显 / 缺省参数回退 / 组件清单。
+"""issue #29 server 侧测试：运行环境配置持久化 / 掩码回显 / api key client 注入 / 组件清单。
 
 - ConfigStore：持久化落盘、掩码回显、掩码占位不覆盖真实 key
-- RuntimeUI：配方缺省参数回退持久化配置；api key 走 client 注入（替代全局 monkey-patch）
+- RuntimeUI：api key 走 client 注入（替代全局 monkey-patch）；离线兜底模型
 - HTTP：GET/PUT /config、GET /components 按 demo-api 契约返回 JSON
 """
 
 import json
 import threading
 import urllib.request
+from pathlib import Path
 
 import pytest
 from openai import OpenAI
@@ -17,32 +18,8 @@ from server.app import build_app
 from server.config_store import ConfigStore, mask_api_key
 from server.runtime import RuntimeUI, _FallbackClient
 
-CALCULATOR_RECIPE = {
-    "name": "calculator-agent",
-    "components": [
-        {"id": "context-window", "version": "1.0"},
-        {"id": "model-openai", "version": "1.0"},
-        {"id": "tool-caller", "version": "1.0"},
-        {"id": "agent-single", "version": "1.0"},
-    ],
-    "connections": [
-        {"from": "context-window", "to": "agent-single"},
-        {"from": "model-openai", "to": "agent-single"},
-        {"from": "tool-caller", "to": "agent-single"},
-    ],
-    "parameters": {
-        "tool-caller": {
-            "tools": [
-                {
-                    "name": "add",
-                    "description": "sum of two numbers",
-                    "func": "lambda a, b: a + b",
-                }
-            ]
-        },
-        "agent-single": {"max_iterations": 3},
-    },
-}
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEMO_CODE = (REPO_ROOT / "demos" / "calculator_agent.py").read_text(encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
@@ -117,65 +94,12 @@ def test_config_store_merges_component_params_by_component(tmp_path):
     }
 
 
-# --- RuntimeUI：配方缺省参数回退持久化配置 ---
+# --- RuntimeUI：api key 走 client 注入（不再全局 monkey-patch） ---
 
 
 def _runtime(tmp_path, monkeypatch, payload: dict) -> RuntimeUI:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     return RuntimeUI(config_store=_store_with(tmp_path, payload))
-
-
-def test_generate_demo_falls_back_to_persisted_defaults(tmp_path, monkeypatch):
-    runtime = _runtime(
-        tmp_path,
-        monkeypatch,
-        {"componentParams": {"model-openai": {"model": "gpt-4o"}}},
-    )
-    try:
-        runtime.generate_demo("demo-1", CALCULATOR_RECIPE)
-        params = runtime._demos["demo-1"].recipe["parameters"]["model-openai"]
-        assert params["model"] == "gpt-4o"  # 配方未提供 → 回退持久化配置
-    finally:
-        runtime.close()
-
-
-def test_recipe_explicit_param_beats_persisted_default(tmp_path, monkeypatch):
-    runtime = _runtime(
-        tmp_path,
-        monkeypatch,
-        {"componentParams": {"model-openai": {"model": "gpt-4o"}}},
-    )
-    recipe = dict(CALCULATOR_RECIPE)
-    recipe["parameters"] = {
-        **CALCULATOR_RECIPE["parameters"],
-        "model-openai": {"model": "gpt-4o-mini"},  # 配方显式指定 → 优先
-    }
-    try:
-        runtime.generate_demo("demo-1", recipe)
-        params = runtime._demos["demo-1"].recipe["parameters"]["model-openai"]
-        assert params["model"] == "gpt-4o-mini"
-    finally:
-        runtime.close()
-
-
-def test_persisted_defaults_only_apply_to_recipe_components(tmp_path, monkeypatch):
-    runtime = _runtime(
-        tmp_path,
-        monkeypatch,
-        {"componentParams": {"model-openai": {"model": "gpt-4o"}}},
-    )
-    # 配方没选 model-openai 组件时，持久化默认参数不产生额外条目
-    recipe = {
-        "components": [{"id": "agent-single", "version": "1.0"}],
-        "connections": [],
-        "parameters": {},
-    }
-    merged = runtime._apply_config_defaults(recipe)
-    assert "model-openai" not in merged["parameters"]
-    assert merged["parameters"] == {}
-
-
-# --- RuntimeUI：api key 走 client 注入（不再全局 monkey-patch） ---
 
 
 def test_config_api_key_injects_real_openai_client(tmp_path, monkeypatch):
@@ -201,9 +125,25 @@ def test_no_api_key_injects_offline_fallback(tmp_path, monkeypatch):
     runtime = _runtime(tmp_path, monkeypatch, {})
     try:
         assert isinstance(runtime._model_client, _FallbackClient)
-        runtime.generate_demo("demo-1", CALCULATOR_RECIPE)
+        runtime.generate_demo_from_code("demo-1", DEMO_CODE)
         chat = runtime.send_chat("demo-1", [{"role": "user", "content": "你好"}])
         assert chat["reply"]["content"].startswith("离线回复：")
+    finally:
+        runtime.close()
+
+
+def test_persisted_component_params_no_longer_auto_apply(tmp_path, monkeypatch):
+    # ADR-0005：配方废除后 componentParams 不再回退进 demo 代码，
+    # demo 代码里的字面参数保持原样（gpt-4o-mini 而非配置里的 gpt-4o）。
+    runtime = _runtime(
+        tmp_path,
+        monkeypatch,
+        {"componentParams": {"model-openai": {"model": "gpt-4o"}}},
+    )
+    try:
+        runtime.generate_demo_from_code("demo-1", DEMO_CODE)
+        instance = runtime._demos["demo-1"].interceptor._agent._model
+        assert instance.model == "gpt-4o-mini"
     finally:
         runtime.close()
 
@@ -305,14 +245,16 @@ def test_http_components_lists_registry_contracts(http_server):
     assert model["params"]["temperature"]["max"] == 2.0
 
 
-def test_http_generate_uses_persisted_defaults(http_server):
-    _request(
-        "PUT",
-        f"{http_server}/config",
-        {"componentParams": {"model-openai": {"model": "gpt-4o"}}},
-    )
-    # 配方未提供 model 参数 → 生成 demo 时回退持久化配置，仍可离线跑通全链路
+def test_http_generate_with_code_runs_offline(http_server):
+    # 无 api key + 持久化配置 → 收 demo 代码生成并离线跑通全链路
     generated = _request(
-        "POST", f"{http_server}/demo/demo-1/generate", {"recipe": CALCULATOR_RECIPE}
+        "POST", f"{http_server}/demo/demo-1/generate", {"code": DEMO_CODE}
     )
     assert generated["status"] == "done"
+
+    chat = _request(
+        "POST",
+        f"{http_server}/demo/demo-1/chat",
+        {"messages": [{"role": "user", "content": "你好"}]},
+    )
+    assert chat["reply"]["content"].startswith("离线回复：")

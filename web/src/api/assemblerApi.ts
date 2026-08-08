@@ -10,7 +10,7 @@ export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 export const DEFAULT_ASSEMBLER_API_BASE = "http://127.0.0.1:9001";
 
-// 调组装器服务（assembler/src/server.ts）的 HTTP 客户端：真实"需求→配方"链路。
+// 调组装器服务（assembler/src/server.ts）的 HTTP 客户端：真实"需求→demo 代码"链路。
 // 澄清机制随链路接入：assemble 返回 clarify 问题 → 界面展示 → 用户回答 → assembleWithAnswers。
 export class AssemblerApiClient implements AssemblerPort {
   private baseUrl: string;

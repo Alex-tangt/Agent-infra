@@ -81,8 +81,9 @@ export interface Recipe {
   parameters: Record<string, Record<string, unknown>>;
 }
 
+// ADR-0005：生成 demo 提交 demo 代码（唯一真相源）；Recipe 保留作 spec 展示用。
 export interface GenerateDemoRequest {
-  recipe: Recipe;
+  code: string;
 }
 
 export type GenerateDemoStatus = "accepted" | "running" | "done" | "failed";

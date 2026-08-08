@@ -29,16 +29,36 @@ const RECIPE = {
   parameters: {},
 };
 
-test("assemblerApi: assemble POSTs the requirement to /assemble and returns a recipe", async () => {
+// 组装器服务响应（ADR-0005）：demo 代码是唯一真相源，spec 为瞬态参考，build-note 为决策日志。
+const DEMO_CODE = 'print("hello agent")\n';
+
+const BUILD_NOTE = {
+  requirement: "会查天气的 agent",
+  skillUsed: null,
+  decisions: [],
+  notes: [],
+};
+
+const RECIPE_OUTCOME = {
+  status: "recipe",
+  code: DEMO_CODE,
+  spec: RECIPE,
+  buildNote: BUILD_NOTE,
+} as const;
+
+test("assemblerApi: assemble POSTs the requirement to /assemble and returns demo code", async () => {
   const captures: Captured[] = [];
   const client = new AssemblerApiClient(
     "http://localhost:9001",
-    mockFetcher({ status: "recipe", recipe: RECIPE }, captures),
+    mockFetcher(RECIPE_OUTCOME, captures),
   );
 
   const outcome = await client.assemble("会查天气的 agent");
 
-  assert.deepEqual(outcome, { status: "recipe", recipe: RECIPE });
+  assert.deepEqual(outcome, RECIPE_OUTCOME);
+  assert.equal(outcome.status, "recipe");
+  assert.ok(outcome.code.includes("print("));
+  assert.equal(outcome.spec?.name, "weather-agent");
   assert.equal(captures.length, 1);
   assert.equal(captures[0]!.url, "http://localhost:9001/assemble");
   assert.equal(captures[0]!.init.method, "POST");
@@ -53,7 +73,7 @@ test("assemblerApi: assembleWithAnswers includes the answers in the request body
   const captures: Captured[] = [];
   const client = new AssemblerApiClient(
     "http://localhost:9001",
-    mockFetcher({ status: "recipe", recipe: RECIPE }, captures),
+    mockFetcher(RECIPE_OUTCOME, captures),
   );
 
   const outcome = await client.assembleWithAnswers("带工具的 agent", {
@@ -62,6 +82,7 @@ test("assemblerApi: assembleWithAnswers includes the answers in the request body
   });
 
   assert.equal(outcome.status, "recipe");
+  assert.ok(outcome.code.length > 0);
   assert.deepEqual(JSON.parse(String(captures[0]!.init.body)), {
     requirement: "带工具的 agent",
     answers: { model: "gpt-4o", tools: ["天气"] },

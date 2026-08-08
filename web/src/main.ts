@@ -21,8 +21,8 @@ async function main(): Promise<void> {
   // 端到端链路默认连 Python demo server（DemoApiClient）；`?mock=1` 回退骨架假后端。
   const api = createDemoApi();
 
-  // 组装器联动（U5）：需求→配方→一键生成 demo；组装器经真实 HTTP 服务（AssemblerApiClient）
-  // 走 acquire→clarify/convert 编排，`?mock=1` 时回退骨架假组装器。
+  // 组装器联动（U5）：需求→demo 代码→一键生成 demo；组装器经真实 HTTP 服务（AssemblerApiClient）
+  // 走 acquire→clarify/convert 编排（ADR-0005 直接产出代码），`?mock=1` 时回退骨架假组装器。
   const assemblerSession = new AssemblerSession(DEMO_ID, createAssemblerApi(), api);
 
   // 组件库（issue #29）：拉取组件目录 + 运行环境配置（api key 掩码回显）。
@@ -152,10 +152,10 @@ async function main(): Promise<void> {
       refresh();
       return;
     }
-    if (target.classList.contains("assembler-json")) {
+    if (target.classList.contains("assembler-code")) {
       event.preventDefault();
-      const jsonEl = target.elements.namedItem("json") as HTMLTextAreaElement | null;
-      assemblerSession.loadJson(jsonEl?.value ?? "");
+      const codeEl = target.elements.namedItem("code") as HTMLTextAreaElement | null;
+      assemblerSession.loadCode(codeEl?.value ?? "");
       refresh();
       return;
     }

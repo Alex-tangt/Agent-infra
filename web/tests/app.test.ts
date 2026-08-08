@@ -13,8 +13,8 @@ function baseState(): AppState {
     assembler: {
       requirement: "",
       questions: null,
-      recipe: null,
-      json: "",
+      code: "",
+      spec: null,
       error: null,
       pending: false,
       generating: false,

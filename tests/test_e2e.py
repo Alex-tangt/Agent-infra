@@ -7,57 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 import components.model as model_module
-from components import as_dict, reset
-from components.agent import register_agent
-from components.context import register_context
-from components.model import register_model
-from components.tools import register_tool_caller
-from wiring import generate
+from components import reset
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-CALCULATOR_RECIPE = {
-    "name": "calculator-agent",
-    "components": [
-        {"id": "context-window", "version": "1.0"},
-        {"id": "model-openai", "version": "1.0"},
-        {"id": "tool-caller", "version": "1.0"},
-        {"id": "agent-single", "version": "1.0"},
-    ],
-    "connections": [
-        {"from": "context-window", "to": "agent-single"},
-        {"from": "model-openai", "to": "agent-single"},
-        {"from": "tool-caller", "to": "agent-single"},
-    ],
-    "parameters": {
-        "model-openai": {"model": "gpt-4o-mini", "temperature": 0.0},
-        "tool-caller": {
-            "tools": [
-                {
-                    "name": "add",
-                    "description": "sum of two numbers",
-                    "func": "lambda a, b: a + b",
-                }
-            ]
-        },
-        "agent-single": {"max_iterations": 3},
-    },
-}
-
-
-@pytest.fixture(autouse=True)
-def clean_registry():
-    reset()
-    yield
-    reset()
-
-
-def _registry():
-    register_context()
-    register_model()
-    register_tool_caller()
-    register_agent()
-    return as_dict()
+DEMO_CODE = (REPO_ROOT / "demos" / "calculator_agent.py").read_text(encoding="utf-8")
 
 
 class _FakeOpenAI:
@@ -92,31 +45,39 @@ class _FakeOpenAI:
         )
 
 
-# --- AC1: 用一份真实配方（模型+上下文+工具+Agent）生成 demo ---
+@pytest.fixture(autouse=True)
+def clean_registry():
+    reset()
+    yield
+    reset()
 
 
-def test_real_recipe_generates_demo_glue():
-    code = generate(CALCULATOR_RECIPE, registry=_registry())
+# --- AC1: demo 代码（ADR-0005 真相源）是可独立运行的普通 Python 文件 ---
+
+
+def test_demo_code_artifact_is_plain_runable_python():
+    code = DEMO_CODE
 
     assert isinstance(code, str)
     assert "context_window = ContextWindow(" in code
     assert "model_openai = OpenAIModel(" in code
     assert "tool_caller = ToolCaller(" in code
-    assert "agent_single = Agent(model=model_openai, context=context_window, tools=tool_caller" in code
+    assert "agent_single = Agent(" in code
+    assert "model=model_openai" in code
+    assert "context=context_window" in code
+    assert "tools=tool_caller" in code
     assert "register_agent()" in code
 
 
-# --- AC2: 生成产物能独立运行（不依赖测试脚手架） + AC3: 跑完一次完整循环 ---
+# --- AC2: 产物能独立运行（不依赖测试脚手架） + AC3: 跑完一次完整循环 ---
 
 
-def test_generated_artifact_runs_full_tool_loop_in_process(monkeypatch, tmp_path):
+def test_demo_artifact_runs_full_tool_loop_in_process(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(model_module, "OpenAI", _FakeOpenAI)
 
-    code = generate(CALCULATOR_RECIPE, registry=_registry())
-    reset()
     demo = tmp_path / "calculator_agent.py"
-    demo.write_text(code, encoding="utf-8")
+    demo.write_text(DEMO_CODE, encoding="utf-8")
 
     namespace = {"__name__": "calculator_agent"}
     exec(compile(demo.read_text(encoding="utf-8"), str(demo), "exec"), namespace)
@@ -132,11 +93,9 @@ def test_generated_artifact_runs_full_tool_loop_in_process(monkeypatch, tmp_path
     assert messages[2]["tool_call_id"]
 
 
-def test_generated_artifact_runs_standalone_as_subprocess(tmp_path):
-    code = generate(CALCULATOR_RECIPE, registry=_registry())
-    reset()
+def test_demo_artifact_runs_standalone_as_subprocess(tmp_path):
     demo = tmp_path / "calculator_agent.py"
-    demo.write_text(code, encoding="utf-8")
+    demo.write_text(DEMO_CODE, encoding="utf-8")
 
     prelude = textwrap.dedent(
         f"""
@@ -188,21 +147,15 @@ def test_generated_artifact_runs_standalone_as_subprocess(tmp_path):
     assert result.stdout.strip() == "the answer is 5"
 
 
-# --- AC4: 端到端测试作为常驻回归（配方→生成→运行→断言） ---
+# --- AC4: 端到端测试作为常驻回归（代码→运行→断言），且可复现 ---
 
 
-def test_e2e_generation_and_run_are_repeatable(tmp_path, monkeypatch):
+def test_demo_run_and_repeat_are_repeatable(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(model_module, "OpenAI", _FakeOpenAI)
-    registry = _registry()
 
-    first = generate(CALCULATOR_RECIPE, registry=registry)
-    second = generate(CALCULATOR_RECIPE, registry=registry)
-    assert first == second
-
-    reset()
     demo = tmp_path / "calculator_agent.py"
-    demo.write_text(first, encoding="utf-8")
+    demo.write_text(DEMO_CODE, encoding="utf-8")
 
     namespaces = []
     for _ in range(2):

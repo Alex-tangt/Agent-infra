@@ -14,7 +14,7 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 - 需要长期/跨会话记忆 → 加记忆组件（后续 skill）。
 - 需要从外部文档/知识库取上下文 → 加检索/RAG 组件。
 - 需要多个角色或子任务协作 → 升级为多 agent 编排。
-- 只有一个组件变更（例如纯问答不需要工具）→ 仍保留三件套骨架，工具列表给空即可，不要删结构——agent 是薄容器，组件外插，删掉任何一个都会被接线引擎判为缺件。
+- 只有一个组件变更（例如纯问答不需要工具）→ 仍保留三件套骨架，工具列表给空即可，不要删结构——agent 是薄容器，构造时三件套缺一不可；运行期摘除单件用注入协议 `disable_part`（消融用）。
 
 反例：需求已经是多 agent / RAG / 记忆，不要硬套本模式。
 
@@ -29,19 +29,19 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 | `tool-caller` | 1.0 | 工具调用 | 工具的挂载点；从需求里抽取外部能力（算数、查询、检索等）登记为 `tools` 列表，无工具则给空列表 |
 | `agent-single` | 1.0 | 组装容器 | 薄循环容器，唯一负责编排与停止条件；本模式的核心，不能省略 |
 
-选择铁律：三件套缺一不可。接线引擎在生成时校验 agent 必须同时接入 model、context、tools 三个组件，缺件直接报错（见 wiring/engine.py 的 `_agent_parts`）。
+选择铁律：三件套缺一不可。demo 代码里 `Agent(model=..., context=..., tools=...)` 必须同时接入 model、context、tools 三个零件，缺件即不可构造；运行期摘除单个零件（消融 ComponentRemove）走注入协议 `disable_part`。
 
 ## 怎么连线（组合边）
 
-组合边 = 配方里的 `connections`。本模式只有一种边：**组件 → agent-single**。方向固定为"组件流入容器"，接线引擎据此把三件套注入 `Agent(model=..., context=..., tools=...)` 的构造函数。
+组合边 = 组装器生成时瞬态 spec 里的 `connections`（声明后校验即弃，不持久、不追代码）。demo 代码里体现为把三件套实例传进 `Agent(model=..., context=..., tools=...)` 构造函数。方向固定为"组件流入容器"。
 
 三条件，缺一不可：
 
-1. `model-openai -> agent-single`
-2. `context-window -> agent-single`
-3. `tool-caller -> agent-single`
+1. model 组件实例 → `Agent(model=...)`
+2. context 组件实例 → `Agent(context=...)`
+3. tools 组件实例 → `Agent(tools=...)`
 
-注意：边是"组件指向 agent"，不要反着连；agent 是薄容器不主动连接任何组件。串联链上 agent-single 是链头，消费 `user_message`（string）并产出 `reply`（string），其余组件不进串联链、只作为 agent 的组件被注入。
+注意：agent 是薄容器不主动连接任何组件。agent-single 是对话入口，消费 `user_message`（string）并产出 `reply`（string），其余组件只作为 agent 的零件被注入，不另做串联。
 
 ## 参数默认建议
 
@@ -58,30 +58,38 @@ agent = 模型管理 + 上下文管理 + 工具调用。这是组装器对几乎
 
 参数默认值全部在 catalog（assembler/src/catalog.ts）与组件契约里有据可查，本表只是给组装器做快择的快捷建议。
 
-## 完整配方示例
+## 完整示例（demo 代码）
 
-以"计算器 agent"为例（结构与 tests/test_e2e.py 的 `CALCULATOR_RECIPE` 一致）：
+以"计算器 agent"为例（与 `demos/calculator_agent.py` 一致，代码即真相源）：
 
-```json
-{
-  "name": "calculator-agent",
-  "components": [
-    { "id": "context-window", "version": "1.0" },
-    { "id": "model-openai", "version": "1.0" },
-    { "id": "tool-caller", "version": "1.0" },
-    { "id": "agent-single", "version": "1.0" }
-  ],
-  "connections": [
-    { "from": "context-window", "to": "agent-single" },
-    { "from": "model-openai", "to": "agent-single" },
-    { "from": "tool-caller", "to": "agent-single" }
-  ],
-  "parameters": {
-    "model-openai": { "model": "gpt-4o-mini", "temperature": 0.0 },
-    "tool-caller": { "tools": [{ "name": "add", "description": "sum of two numbers", "func": "lambda a, b: a + b" }] },
-    "agent-single": { "max_iterations": 3 }
-  }
-}
+```python
+from components.agent import Agent, register_agent
+from components.context import ContextWindow, register_context
+from components.model import OpenAIModel, register_model
+from components.tools import Tool, ToolCaller, register_tool_caller
+
+register_context()
+register_model()
+register_tool_caller()
+register_agent()
+
+
+def add(a: float, b: float) -> float:
+    return a + b
+
+
+context_window = ContextWindow(max_rounds=5, strategy="truncate")
+model_openai = OpenAIModel(model="gpt-4o-mini", temperature=0.0, max_tokens=1024)
+tool_caller = ToolCaller(
+    tools=[Tool(name="add", description="sum of two numbers", func=add)],
+    strategy="strict",
+)
+agent_single = Agent(
+    model=model_openai,
+    context=context_window,
+    tools=tool_caller,
+    max_iterations=3,
+)
 ```
 
-配方产出即交棒：接线引擎按它生成第一个可运行的胶水代码 demo，此后配方即弃，调试阶段直接改生成的 demo 代码。
+组装器直接产出这种 demo 代码交给运行时执行（`generate_demo_from_code` 做 AST 校验后运行）；跑通后该 demo 即复用模板，后续需求照它改。

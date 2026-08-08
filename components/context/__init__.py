@@ -42,6 +42,29 @@ class ContextWindow:
             messages.insert(0, {"role": "system", "content": self._system_prompt})
         return messages
 
+    def set_param(self, name: str, value) -> None:
+        """运行时参数覆盖（消融 ParameterOverride 用）。
+
+        max_rounds/strategy 走契约校验；system_prompt 是构造参数非契约参数，
+        单独按类型校验（None 表示不注入 system prompt）。
+        """
+        if name in ("max_rounds", "strategy"):
+            spec = SPEC.params[name]
+            spec.validate(value, component_id=SPEC.id, name=name)
+            setattr(self, f"_{name}", value)
+            return
+        if name == "system_prompt":
+            if value is not None and not isinstance(value, str):
+                raise ValueError(
+                    f"system_prompt must be a string or None, got {value!r}"
+                )
+            self._system_prompt = value
+            return
+        raise ValueError(
+            f"context-window 不支持运行时参数 {name!r}"
+            "（仅 max_rounds/strategy/system_prompt）"
+        )
+
     def _truncate(self) -> None:
         while sum(1 for m in self._messages if m["role"] == "user") > self._max_rounds:
             self._drop_earliest_round()

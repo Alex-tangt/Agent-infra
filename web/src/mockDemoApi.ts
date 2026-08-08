@@ -50,7 +50,7 @@ export class MockDemoApi implements DemoApi {
     };
   }
 
-  // mock 接线引擎入口：接受配方即返回成功，供骨架独立运行 / 测试替代真实后端。
+  // mock 运行时入口：接受 demo 代码即返回成功，供骨架独立运行 / 测试替代真实后端。
   async generateDemo(
     demoId: string,
     request: GenerateDemoRequest,
@@ -58,7 +58,7 @@ export class MockDemoApi implements DemoApi {
     return {
       demoId,
       status: "done",
-      message: `mock 接线引擎已接受配方（${request.recipe.components.length} 个组件）`,
+      message: `mock 运行时已接受 demo 代码（${request.code.length} 字符）`,
     };
   }
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { DemoApiClient } from "../src/api/apiClient.ts";
-import type { DemoApi } from "../src/mockDemoApi.ts";
+import type { DemoApi } from "../src/api/contract.ts";
 
 type Captured = { url: string; init: RequestInit };
 
@@ -102,29 +102,21 @@ test("triggerAblation POSTs JSON to /demo/{id}/ablations and returns run", async
   });
 });
 
-test("generateDemo POSTs the recipe to /demo/{id}/generate", async () => {
+test("generateDemo POSTs the demo code to /demo/{id}/generate", async () => {
   const captures: Captured[] = [];
-  const recipe = {
-    name: "weather-agent",
-    components: [
-      { id: "context-window", version: "1.0" },
-      { id: "model-openai", version: "1.0" },
-    ],
-    connections: [{ from: "context-window", to: "model-openai" }],
-    parameters: {},
-  };
+  const code = 'print("hello agent")\n';
   const client = new DemoApiClient(
     "http://localhost:8000",
     mockFetcher(captures, { demoId: "demo-x", status: "done" }),
   );
 
-  const res = await client.generateDemo("demo-x", { recipe });
+  const res = await client.generateDemo("demo-x", { code });
 
   assert.equal(res.status, "done");
   assert.equal(captures.length, 1);
   assert.equal(captures[0]!.url, "http://localhost:8000/demo/demo-x/generate");
   assert.equal(captures[0]!.init.method, "POST");
-  assert.deepEqual(JSON.parse(String(captures[0]!.init.body)), { recipe });
+  assert.deepEqual(JSON.parse(String(captures[0]!.init.body)), { code });
 });
 
 test("non-ok response throws", async () => {

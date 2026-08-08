@@ -30,23 +30,16 @@ test("mock triggerAblation returns a finished run with results", async () => {
   assert.ok(res.run.results[0]!.scores && Object.keys(res.run.results[0]!.scores).length > 0);
 });
 
-test("mock generateDemo accepts a recipe and reports the demo as done", async () => {
+test("mock generateDemo accepts demo code and reports the demo as done", async () => {
   const api = new MockDemoApi();
   const res = await api.generateDemo("demo-x", {
-    recipe: {
-      name: "weather-agent",
-      components: [
-        { id: "context-window", version: "1.0" },
-        { id: "model-openai", version: "1.0" },
-      ],
-      connections: [{ from: "context-window", to: "model-openai" }],
-      parameters: {},
-    },
+    code: 'print("hello agent")\n',
   });
 
   assert.equal(res.demoId, "demo-x");
   assert.equal(res.status, "done");
-  assert.match(res.message ?? "", /接受配方/);
+  assert.match(res.message ?? "", /接受 demo 代码/);
+  assert.match(res.message ?? "", /字符/);
 });
 
 test("mock config read/write keeps masked api key semantics", async () => {

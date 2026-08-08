@@ -1,8 +1,42 @@
-import copy
+"""消融编排：运行时注入（ADR-0005），不再用配方重建变体。
+
+旧版把消融变量 apply 到配方（recipe）上产出变体配方，再经接线引擎重建 demo。
+ADR-0005 废除配方与接线后，变体 = demo 代码 + 对运行中组件实例的注入操作：
+- ParameterOverride → 组件实例 set_param
+- ComponentRemove → agent.disable_part（接受空零件）
+- ComponentSwap → 构造替换实例 + agent.replace_part
+
+本模块只做编排与汇总，不碰运行时/注册表细节；注入面收敛为 VariantDemo
+协议（set_param/remove_component/replace_component），由运行时侧实现。
+
+取舍说明：真正的"同一实例注入后恢复"最优雅但要逐变体改回、易漏状态；
+这里采用务实中间态——每个 (变体, 评测用例) 从 demo 代码重新构建一次全新
+实例再注入，避免跨用例上下文/遥测污染，也不再依赖配方，满足 ADR-0005。
+"""
+
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Protocol
 
-from recipe import validate as validate_recipe
+
+class VariantDemo(Protocol):
+    """消融变体的运行时注入句柄：组件统一注入协议的机械调用面。
+
+    builder 产出的 demo 已执行 demo 代码并接入遥测，注入方法直接作用于
+    运行中的组件实例；evaluator 通过 demo.run() 跑用例、demo.records()
+    取本次遥测。
+    """
+
+    def set_param(self, component_id: str, name: str, value) -> None: ...
+    def remove_component(self, component_id: str) -> None: ...
+    def replace_component(
+        self,
+        component_id: str,
+        replacement_id: str | None,
+        replacement_version: str | None,
+    ) -> None: ...
+    def run(self, prompt: str) -> str: ...
+    def records(self) -> list: ...
 
 
 @dataclass(frozen=True)
@@ -13,7 +47,8 @@ class AblationVariable:
     def label(self) -> str:
         raise NotImplementedError
 
-    def apply(self, recipe: dict) -> dict:
+    def apply(self, demo: VariantDemo) -> None:
+        """对运行中的 demo 实例做一次注入，产出该变量的变体。"""
         raise NotImplementedError
 
 
@@ -28,41 +63,15 @@ class ComponentSwap(AblationVariable):
             return f"swap:{self.component_id}->{self.replacement_id}"
         return f"swap:{self.component_id}->{self.component_id}@{self.replacement_version}"
 
-    def apply(self, recipe: dict) -> dict:
+    def apply(self, demo: VariantDemo) -> None:
         if self.replacement_id is None and self.replacement_version is None:
             raise ValueError(
                 f"ComponentSwap for {self.component_id!r} needs replacement_id "
                 "or replacement_version"
             )
-        variant = _copy_recipe(recipe)
-        new_id = self.replacement_id or self.component_id
-        if new_id != self.component_id and any(
-            c["id"] == new_id for c in variant["components"]
-        ):
-            raise ValueError(
-                f"replacement component {new_id!r} already exists in recipe"
-            )
-        for component in variant["components"]:
-            if component["id"] != self.component_id:
-                continue
-            if new_id != self.component_id:
-                component["id"] = new_id
-            if self.replacement_version is not None:
-                component["version"] = self.replacement_version
-            break
-        else:
-            raise ValueError(f"component {self.component_id!r} not found in recipe")
-        if new_id != self.component_id:
-            for connection in variant["connections"]:
-                if connection.get("from") == self.component_id:
-                    connection["from"] = new_id
-                if connection.get("to") == self.component_id:
-                    connection["to"] = new_id
-            if self.component_id in variant["parameters"]:
-                variant["parameters"][new_id] = variant["parameters"].pop(
-                    self.component_id
-                )
-        return variant
+        demo.replace_component(
+            self.component_id, self.replacement_id, self.replacement_version
+        )
 
 
 @dataclass(frozen=True)
@@ -71,20 +80,8 @@ class ComponentRemove(AblationVariable):
     def label(self) -> str:
         return f"remove:{self.component_id}"
 
-    def apply(self, recipe: dict) -> dict:
-        variant = _copy_recipe(recipe)
-        if not any(c["id"] == self.component_id for c in variant["components"]):
-            raise ValueError(f"component {self.component_id!r} not found in recipe")
-        variant["components"] = [
-            c for c in variant["components"] if c["id"] != self.component_id
-        ]
-        variant["connections"] = [
-            c
-            for c in variant["connections"]
-            if c.get("from") != self.component_id and c.get("to") != self.component_id
-        ]
-        variant["parameters"].pop(self.component_id, None)
-        return variant
+    def apply(self, demo: VariantDemo) -> None:
+        demo.remove_component(self.component_id)
 
 
 @dataclass(frozen=True)
@@ -96,31 +93,8 @@ class ParameterOverride(AblationVariable):
     def label(self) -> str:
         return f"param:{self.component_id}.{self.parameter}"
 
-    def apply(self, recipe: dict) -> dict:
-        variant = _copy_recipe(recipe)
-        if not any(c["id"] == self.component_id for c in variant["components"]):
-            raise ValueError(f"component {self.component_id!r} not found in recipe")
-        variant["parameters"].setdefault(self.component_id, {})[self.parameter] = (
-            self.value
-        )
-        return variant
-
-
-def _copy_recipe(recipe: dict) -> dict:
-    return copy.deepcopy(recipe)
-
-
-@dataclass
-class Variant:
-    name: str
-    recipe: dict
-
-
-def build_variants(base_recipe: dict, variables: list[AblationVariable]) -> list[Variant]:
-    return [
-        Variant(name=variable.label, recipe=variable.apply(base_recipe))
-        for variable in variables
-    ]
+    def apply(self, demo: VariantDemo) -> None:
+        demo.set_param(self.component_id, self.parameter, self.value)
 
 
 @dataclass
@@ -139,7 +113,6 @@ class CaseResult:
 @dataclass
 class VariantResult:
     name: str
-    recipe: dict
     score: float
     telemetry: dict
     cases: list = field(default_factory=list)
@@ -147,25 +120,31 @@ class VariantResult:
 
 @dataclass
 class AblationSummary:
-    base_recipe: dict
     variants: list = field(default_factory=list)
 
 
-def run_ablation(
-    base_recipe: dict,
+def run_ablation_on_demo(
+    builder,
     variables: list[AblationVariable],
     eval_cases: list[dict],
     evaluator,
-    registry: dict,
 ) -> AblationSummary:
+    """运行时注入式消融主入口（ADR-0005）：代码重建 + 注入，不再用配方。
+
+    builder: () -> 新的已运行 demo 句柄（VariantDemo）。每个 (变体, 用例)
+       重新构建一次，保证变体互不串扰、遥测按用例隔离。
+    evaluator: (demo, case) -> EvaluationResult；demo 已由变量注入完毕，
+       可直接 demo.run(case["prompt"]) 并返回得分与遥测。
+    """
     if not eval_cases:
         raise ValueError("eval_cases must be a non-empty list")
     variant_results = []
-    for variant in build_variants(base_recipe, variables):
-        validate_recipe(variant.recipe, registry=registry)
+    for variable in variables:
         case_results = []
         for case in eval_cases:
-            result = evaluator(variant.recipe, registry, case)
+            demo = builder()
+            variable.apply(demo)
+            result = evaluator(demo, case)
             if not isinstance(result, EvaluationResult):
                 raise TypeError(
                     f"evaluator must return EvaluationResult, got {type(result).__name__}"
@@ -177,14 +156,13 @@ def run_ablation(
             )
         variant_results.append(
             VariantResult(
-                name=variant.name,
-                recipe=variant.recipe,
+                name=variable.label,
                 score=_mean([r.score for r in case_results]),
                 telemetry=_summarize_telemetry(r.telemetry for r in case_results),
                 cases=case_results,
             )
         )
-    return AblationSummary(base_recipe=base_recipe, variants=variant_results)
+    return AblationSummary(variants=variant_results)
 
 
 def _mean(scores: list) -> float:

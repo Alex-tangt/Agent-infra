@@ -66,6 +66,17 @@ class OllamaModel:
             spec = OLLAMA_MODEL_SPEC.params[name]
             spec.validate(getattr(self, name), component_id=OLLAMA_MODEL_SPEC.id, name=name)
 
+    def set_param(self, name: str, value) -> None:
+        """运行时参数覆盖（消融 ParameterOverride 用）：按契约校验后写入实例属性。"""
+        if name not in ("model", "temperature", "max_tokens", "base_url"):
+            raise ValueError(
+                f"model-ollama 不支持运行时参数 {name!r}"
+                "（仅 model/temperature/max_tokens/base_url）"
+            )
+        spec = OLLAMA_MODEL_SPEC.params[name]
+        spec.validate(value, component_id=OLLAMA_MODEL_SPEC.id, name=name)
+        setattr(self, name, value)
+
     def generate(self, messages: list[dict], tools: list[dict] | None = None) -> str | ModelReply:
         kwargs = dict(
             model=self.model,

@@ -186,7 +186,7 @@ test("debug panel renders mock demo telemetry without a real backend", async () 
 });
 
 test("aggregateTelemetry flags components with error spans", () => {
-  const spans = [
+  const spans: TelemetrySpan[] = [
     { id: "s1", componentId: "model", operation: "chat", startTimeMs: 0, durationMs: 10, tokenUsage: null, status: "error" },
     { id: "s2", componentId: "tools", operation: "search", startTimeMs: 0, durationMs: 10, tokenUsage: null, status: "ok" },
   ];

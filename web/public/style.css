@@ -170,7 +170,7 @@
 }
 
 .assembler-requirement,
-.assembler-json {
+.assembler-code {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -178,7 +178,7 @@
 }
 
 .assembler-requirement input,
-.assembler-json textarea {
+.assembler-code textarea {
   padding: 6px 8px;
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -186,7 +186,7 @@
 }
 
 .assembler-requirement button,
-.assembler-json button,
+.assembler-code button,
 .demo-generate button {
   align-self: flex-start;
   padding: 6px 12px;
@@ -197,7 +197,7 @@
 }
 
 .assembler-requirement button:hover,
-.assembler-json button:hover,
+.assembler-code button:hover,
 .demo-generate button:hover {
   background: #eaeef2;
 }
@@ -212,35 +212,35 @@
   font-size: 13px;
 }
 
-.recipe-view {
+.spec-view {
   border-top: 1px dashed #eaeef2;
   margin-top: 8px;
   padding-top: 8px;
 }
 
-.recipe-view h3 {
+.spec-view h3 {
   font-size: 13px;
   margin: 8px 0 4px;
   color: #57606a;
 }
 
-.recipe-components,
-.recipe-connections,
-.recipe-parameters {
+.spec-components,
+.spec-connections,
+.spec-parameters {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.recipe-component,
-.recipe-connection,
-.recipe-parameter {
+.spec-component,
+.spec-connection,
+.spec-parameter {
   font-size: 13px;
   padding: 2px 0;
   border-bottom: 1px dashed #eaeef2;
 }
 
-.recipe-name {
+.spec-name {
   font-weight: 600;
   margin: 0 0 4px;
 }

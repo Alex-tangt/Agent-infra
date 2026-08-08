@@ -41,7 +41,7 @@ MODEL_SPEC = ComponentSpec(
     inputs=[Port(name="messages", type="MessageList")],
     outputs=[Port(name="response", type="string")],
     params={
-        "model": ParamSpec(type="string", enum=["gpt-4o-mini", "gpt-4o"], default="gpt-4o-mini"),
+        "model": ParamSpec(type="string", enum=["gpt-4o-mini", "gpt-4o", "deepseek-v4-flash", "deepseek-v4-pro"], default="gpt-4o-mini"),
         "temperature": ParamSpec(type="number", min=0.0, max=2.0, default=0.7),
         "max_tokens": ParamSpec(type="number", min=1, max=16384, default=1024),
     },
@@ -124,6 +124,16 @@ class OpenAIModel:
         for name in ("model", "temperature", "max_tokens"):
             spec = MODEL_SPEC.params[name]
             spec.validate(getattr(self, name), component_id=MODEL_SPEC.id, name=name)
+
+    def set_param(self, name: str, value) -> None:
+        """运行时参数覆盖（消融 ParameterOverride 用）：按契约校验后写入实例属性。"""
+        if name not in ("model", "temperature", "max_tokens"):
+            raise ValueError(
+                f"model-openai 不支持运行时参数 {name!r}（仅 model/temperature/max_tokens）"
+            )
+        spec = MODEL_SPEC.params[name]
+        spec.validate(value, component_id=MODEL_SPEC.id, name=name)
+        setattr(self, name, value)
 
     def generate(self, messages: list[dict], tools: list[dict] | None = None) -> str | ModelReply:
         kwargs = dict(
