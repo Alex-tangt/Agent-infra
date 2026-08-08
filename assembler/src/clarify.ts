@@ -6,27 +6,17 @@ import {
 } from "./catalog.ts";
 import type { Recipe } from "./recipe.ts";
 import {
+  CONCRETE_MODEL_SIGNALS,
+  CONCRETE_TOOL_SIGNALS,
+  GENERIC_TOOL_SIGNALS,
+  MODEL_INTENT_SIGNALS,
+  resolveModelComponent,
+} from "./signals.ts";
+import {
   createStructuredOutputTool,
   type LlmLike,
 } from "./structuredOutput.ts";
 import { validateParams } from "./validate.ts";
-
-const MODEL_INTENT_SIGNALS = ["模型", "model"] as const;
-
-const MODEL_SIGNALS = ["gpt-4o-mini", "gpt-4o"] as const;
-
-const GENERIC_TOOL_SIGNALS = ["工具", "tool"] as const;
-
-const CONCRETE_TOOL_SIGNALS = [
-  "查",
-  "搜索",
-  "查询",
-  "天气",
-  "weather",
-  "search",
-  "计算",
-  "calc",
-] as const;
 
 function hasAnySignal(text: string, signals: readonly string[]): boolean {
   return signals.some((signal) => text.includes(signal));
@@ -48,7 +38,7 @@ export function withAnswers(requirement: string, answers: Answers): string {
   return parts.join("。");
 }
 
-function addToolCaller(recipe: Recipe, catalog: ComponentCatalog): void {
+function addToolCaller(recipe: Recipe, catalog: ComponentCatalog, modelComponent: string): void {
   if (recipe.components.some((c) => c.id === "tool-caller")) {
     return;
   }
@@ -60,19 +50,19 @@ function addToolCaller(recipe: Recipe, catalog: ComponentCatalog): void {
     return;
   }
   const serialEdgeIndex = recipe.connections.findIndex(
-    (c) => c.from === "context-window" && c.to === "model-openai",
+    (c) => c.from === "context-window" && c.to === modelComponent,
   );
   if (serialEdgeIndex >= 0) {
     recipe.connections.splice(
       serialEdgeIndex,
       1,
       { from: "context-window", to: "tool-caller" },
-      { from: "tool-caller", to: "model-openai" },
+      { from: "tool-caller", to: modelComponent },
     );
   } else {
     recipe.connections.push(
       { from: "context-window", to: "tool-caller" },
-      { from: "tool-caller", to: "model-openai" },
+      { from: "tool-caller", to: modelComponent },
     );
   }
 }
@@ -81,18 +71,19 @@ export function applyAnswers(
   recipe: Recipe,
   answers: Answers,
   catalog: ComponentCatalog = DEFAULT_CATALOG,
+  modelComponent = "model-openai",
 ): Recipe {
   const updated = structuredClone(recipe) as Recipe;
 
   if (answers.model) {
-    updated.parameters["model-openai"] = {
-      ...updated.parameters["model-openai"],
+    updated.parameters[modelComponent] = {
+      ...updated.parameters[modelComponent],
       model: answers.model,
     };
   }
   if (answers.tools) {
     if (answers.tools.length > 0) {
-      addToolCaller(updated, catalog);
+      addToolCaller(updated, catalog, modelComponent);
     }
     if (updated.components.some((c) => c.id === "tool-caller")) {
       updated.parameters["tool-caller"] = {
@@ -114,8 +105,9 @@ export async function assembleRequirement(
   requirement: string,
   llm: LlmLike,
   catalog: ComponentCatalog = DEFAULT_CATALOG,
+  modelComponent = "model-openai",
 ): Promise<AssemblyResult> {
-  const questions = needsClarification(requirement, catalog);
+  const questions = needsClarification(requirement, catalog, modelComponent);
   if (questions.length > 0) {
     return { status: "clarify", questions };
   }
@@ -129,26 +121,28 @@ export async function assembleWithAnswers(
   answers: Answers,
   llm: LlmLike,
   catalog: ComponentCatalog = DEFAULT_CATALOG,
+  modelComponent = "model-openai",
 ): Promise<Recipe> {
   const tool = createStructuredOutputTool(llm, catalog);
   const recipe = await tool.execute(withAnswers(requirement, answers));
-  return applyAnswers(recipe, answers, catalog);
+  return applyAnswers(recipe, answers, catalog, modelComponent);
 }
 
-function modelChoices(catalog: ComponentCatalog): string[] {
-  return findComponent(catalog, "model-openai")?.params.model?.enum ?? [];
+function modelChoices(catalog: ComponentCatalog, modelComponent: string): string[] {
+  return findComponent(catalog, modelComponent)?.params.model?.enum ?? [];
 }
 
 export function needsClarification(
   requirement: string,
   catalog: ComponentCatalog = DEFAULT_CATALOG,
+  modelComponent = "model-openai",
 ): string[] {
   const text = requirement.toLowerCase();
   const questions: string[] = [];
 
   const mentionsModel = hasAnySignal(text, MODEL_INTENT_SIGNALS);
-  const mentionsConcreteModel = hasAnySignal(text, MODEL_SIGNALS);
-  const choices = modelChoices(catalog);
+  const mentionsConcreteModel = hasAnySignal(text, CONCRETE_MODEL_SIGNALS);
+  const choices = modelChoices(catalog, resolveModelComponent(text, modelComponent));
   if (mentionsModel && !mentionsConcreteModel && choices.length > 0) {
     questions.push(`选哪个模型？可选：${choices.join("、")}`);
   }

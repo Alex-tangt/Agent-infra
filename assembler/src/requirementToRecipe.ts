@@ -1,35 +1,18 @@
 import { DEFAULT_CATALOG, requireComponent, type ComponentCatalog } from "./catalog.ts";
 import type { Recipe } from "./recipe.ts";
+import {
+  AGENT_SIGNALS,
+  CONCRETE_MODEL_SIGNALS,
+  TOOL_SIGNALS,
+  resolveModelComponent,
+} from "./signals.ts";
 import { validateParams } from "./validate.ts";
 import { validateStructure } from "./schema.ts";
 
-const TOOL_SIGNALS = [
-  "查",
-  "搜索",
-  "查询",
-  "天气",
-  "weather",
-  "search",
-  "tool",
-  "工具",
-  "计算",
-  "calc",
-] as const;
-
-const AGENT_SIGNALS = [
-  "agent",
-  "助手",
-  "assistant",
-  "对话",
-  "聊天",
-  "chat",
-  "机器人",
-] as const;
-
-const MODEL_SIGNALS: Array<[string, string]> = [
-  ["gpt-4o-mini", "gpt-4o-mini"],
-  ["gpt-4o", "gpt-4o"],
-];
+// 具体模型信号 → 模型参数覆盖映射（型号词即参数值，单一来源在 signals.ts）
+const MODEL_SIGNALS: Array<[string, string]> = CONCRETE_MODEL_SIGNALS.map(
+  (signal) => [signal, signal] as [string, string],
+);
 
 const TEMPERATURE_PATTERN = /temperature\s+([0-9]+(?:\.[0-9]+)?)/;
 
@@ -52,15 +35,18 @@ function resolveVersion(catalog: ComponentCatalog, id: string): string {
 export function requirementToRecipe(
   requirement: string,
   catalog: ComponentCatalog = DEFAULT_CATALOG,
+  modelComponent = "model-openai",
 ): Recipe {
   const text = requirement.toLowerCase();
 
   const wantsTools = hasAnySignal(text, TOOL_SIGNALS);
   const wantsAgent = hasAnySignal(text, AGENT_SIGNALS);
+  // 需求点名 ollama/本地模型 → 选用 model-ollama；否则用环境默认组件。
+  const modelId = resolveModelComponent(text, modelComponent);
 
   const components: Recipe["components"] = [
     { id: "context-window", version: resolveVersion(catalog, "context-window") },
-    { id: "model-openai", version: resolveVersion(catalog, "model-openai") },
+    { id: modelId, version: resolveVersion(catalog, modelId) },
   ];
   if (wantsTools) {
     components.push({ id: "tool-caller", version: resolveVersion(catalog, "tool-caller") });
@@ -75,7 +61,7 @@ export function requirementToRecipe(
     ? components
         .filter((c) => c.id !== "agent-single")
         .map((c) => ({ from: c.id, to: "agent-single" }))
-    : [{ from: "context-window", to: "model-openai" }];
+    : [{ from: "context-window", to: modelId }];
 
   const parameters: Recipe["parameters"] = {};
   if (wantsAgent) {
@@ -83,13 +69,13 @@ export function requirementToRecipe(
   }
   const modelOverride = MODEL_SIGNALS.find(([signal]) => text.includes(signal));
   if (modelOverride) {
-    parameters["model-openai"] = { model: modelOverride[1] };
+    parameters[modelId] = { model: modelOverride[1] };
   }
   const temperatureMatch = text.match(TEMPERATURE_PATTERN);
   if (temperatureMatch) {
     const temperature = Number(temperatureMatch[1]);
-    parameters["model-openai"] = {
-      ...parameters["model-openai"],
+    parameters[modelId] = {
+      ...parameters[modelId],
       temperature,
     };
   }

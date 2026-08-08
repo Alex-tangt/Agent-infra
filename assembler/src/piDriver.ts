@@ -13,12 +13,13 @@ import {
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_CATALOG, type ComponentCatalog } from "./catalog.ts";
-import { needsClarification, withAnswers, type Answers } from "./clarify.ts";
+import { needsClarification, type Answers } from "./clarify.ts";
 import {
   shouldLoadDesignSkill,
   skillContextBlock,
 } from "./designKnowledge.ts";
 import type { Acquisition, AssemblerDriver, SkillReference } from "./driver.ts";
+import { runAcquire } from "./driver.ts";
 import { ASSEMBLER_OPERATING_RULES } from "./operatingRules.ts";
 import type { Recipe } from "./recipe.ts";
 import {
@@ -46,6 +47,8 @@ export interface PiDriverOptions {
   cwd?: string;
   agentDir?: string;
   model?: unknown;
+  /** 配方默认选用的模型组件（服务启动时由 ASSEMBLER_MODEL_COMPONENT 注入） */
+  modelComponent?: string;
   createSession?: (options: RealSessionOptions) => Promise<PiSession>;
 }
 
@@ -164,6 +167,7 @@ export class PiDriver implements AssemblerDriver {
   private readonly cwd: string;
   private readonly agentDir: string;
   private readonly model: unknown;
+  private readonly modelComponent: string;
   private readonly createSession: (options: RealSessionOptions) => Promise<PiSession>;
   private readonly skills: Skill[] = [];
   private loaded: SkillReference[] = [];
@@ -174,6 +178,7 @@ export class PiDriver implements AssemblerDriver {
     this.cwd = options.cwd ?? process.cwd();
     this.agentDir = options.agentDir ?? getAgentDir();
     this.model = options.model;
+    this.modelComponent = options.modelComponent ?? "model-openai";
     this.createSession = options.createSession ?? createRealPiSession;
     try {
       this.skills = buildSkillOverrides(this.skillsDir);
@@ -187,20 +192,15 @@ export class PiDriver implements AssemblerDriver {
   }
 
   async acquire(requirement: string, answers?: Answers): Promise<Acquisition> {
-    const text = answers ? withAnswers(requirement, answers) : requirement;
-    const questions = needsClarification(text, this.catalog);
-    if (questions.length > 0) {
-      this.loaded = [];
-      return { status: "clarify", questions };
-    }
-    this.loaded = this.matchedSkills(text).map((skill) => ({
-      name: skill.name,
-      source: "pi" as const,
-    }));
-    return {
-      status: "ready",
-      prompt: buildPiPrompt(text, this.matchedSkills(text)),
-    };
+    // 复用双 driver acquire 公共骨架（澄清判定 → skill 匹配 → prompt 组装）
+    const { acquisition, loaded } = runAcquire(requirement, answers, {
+      clarify: (text) => needsClarification(text, this.catalog, this.modelComponent),
+      matchSkills: (text) => this.matchedSkills(text),
+      buildPrompt: (text, matched) => buildPiPrompt(text, matched),
+      toSkillReference: (skill) => ({ name: skill.name, source: "pi" as const }),
+    });
+    this.loaded = loaded;
+    return acquisition;
   }
 
   async convert(prompt: string): Promise<Recipe> {

@@ -32,6 +32,8 @@ def test_tool_caller_registers_contract():
     assert spec.inputs[0].type == "ToolCallRequest"
     assert [p.name for p in spec.outputs] == ["result"]
     assert spec.outputs[0].type == "ToolCallResult"
+    assert spec.role == "tools"
+    assert isinstance(spec.description, str) and spec.description
 
 
 def test_tool_caller_params_have_defaults_and_constraints():

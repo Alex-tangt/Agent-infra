@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_CATALOG, type ComponentCatalog } from "./catalog.ts";
-import { needsClarification, withAnswers, type Answers } from "./clarify.ts";
+import { needsClarification, type Answers } from "./clarify.ts";
 import {
   readSkillMetadata,
   shouldLoadDesignSkill,
@@ -13,6 +13,7 @@ import type {
   AssemblerDriver,
   SkillReference,
 } from "./driver.ts";
+import { runAcquire } from "./driver.ts";
 import { ASSEMBLER_OPERATING_RULES } from "./operatingRules.ts";
 import type { Recipe } from "./recipe.ts";
 import { requirementToRecipe } from "./requirementToRecipe.ts";
@@ -28,6 +29,8 @@ export interface LocalDriverOptions {
   skillsDir?: string;
   llm?: LlmLike;
   useLlm?: boolean;
+  /** 配方默认选用的模型组件（服务启动时由 ASSEMBLER_MODEL_COMPONENT 注入） */
+  modelComponent?: string;
 }
 
 function buildLlmPrompt(
@@ -54,6 +57,7 @@ export class LocalDriver implements AssemblerDriver {
   private readonly llm: LlmLike | undefined;
   private readonly useLlm: boolean;
   private readonly skill: SkillMetadata | undefined;
+  private readonly modelComponent: string;
   private loaded: SkillReference[] = [];
 
   constructor(options: LocalDriverOptions = {}) {
@@ -61,6 +65,7 @@ export class LocalDriver implements AssemblerDriver {
     this.skillsDir = options.skillsDir ?? fileURLToPath(DEFAULT_SKILL_DIR);
     this.llm = options.llm;
     this.useLlm = options.useLlm ?? false;
+    this.modelComponent = options.modelComponent ?? "model-openai";
     if (this.useLlm && !this.llm) {
       throw new Error("LocalDriver with useLlm: true requires an llm");
     }
@@ -76,24 +81,24 @@ export class LocalDriver implements AssemblerDriver {
   }
 
   async acquire(requirement: string, answers?: Answers): Promise<Acquisition> {
-    const text = answers ? withAnswers(requirement, answers) : requirement;
-    const questions = needsClarification(text, this.catalog);
-    if (questions.length > 0) {
-      this.loaded = [];
-      return { status: "clarify", questions };
-    }
-    this.loaded = this.skill && shouldLoadDesignSkill(text, this.skill)
-      ? [{ name: this.skill.name, source: "injected" as const }]
-      : [];
-    const prompt = this.useLlm ? buildLlmPrompt(text, this.skill) : text;
-    return { status: "ready", prompt };
+    // 复用双 driver acquire 公共骨架（澄清判定 → skill 匹配 → prompt 组装）
+    const { acquisition, loaded } = runAcquire(requirement, answers, {
+      clarify: (text) => needsClarification(text, this.catalog, this.modelComponent),
+      matchSkills: (text) =>
+        this.skill && shouldLoadDesignSkill(text, this.skill) ? [this.skill] : [],
+      buildPrompt: (text, matched) =>
+        this.useLlm ? buildLlmPrompt(text, matched[0]) : text,
+      toSkillReference: (skill) => ({ name: skill.name, source: "injected" as const }),
+    });
+    this.loaded = loaded;
+    return acquisition;
   }
 
   async convert(prompt: string): Promise<Recipe> {
     if (this.useLlm) {
       return createStructuredOutputTool(this.llm!, this.catalog).execute(prompt);
     }
-    return requirementToRecipe(prompt, this.catalog);
+    return requirementToRecipe(prompt, this.catalog, this.modelComponent);
   }
 
   skillsUsed(): SkillReference[] {

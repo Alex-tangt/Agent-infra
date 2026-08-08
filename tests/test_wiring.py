@@ -6,6 +6,7 @@ from components.context import register_context
 from components.model import register_model
 from components.tools import register_tool_caller
 from wiring import generate
+from wiring.engine import _ROLE_BY_COMPONENT
 
 
 @pytest.fixture(autouse=True)
@@ -235,3 +236,31 @@ def test_unconnected_component_without_string_input_raises():
 
     with pytest.raises(ValueError, match="no incoming connection"):
         generate(recipe, registry=_registry())
+
+
+# --- 子项 4：model-ollama 通过角色表接入 agent（仅加一行，不做契约驱动改造） ---
+
+
+def test_model_ollama_role_is_known_to_wiring_engine():
+    assert _ROLE_BY_COMPONENT["model-ollama"] == "model"
+
+
+def test_agent_recipe_accepts_model_ollama_as_model_part():
+    import wiring.engine as engine_module
+
+    recipe = {
+        "components": [
+            {"id": "context-window", "version": "1.0"},
+            {"id": "model-ollama", "version": "1.0"},
+            {"id": "tool-caller", "version": "1.0"},
+            {"id": "agent-single", "version": "1.0"},
+        ],
+        "connections": [
+            {"from": "context-window", "to": "agent-single"},
+            {"from": "model-ollama", "to": "agent-single"},
+            {"from": "tool-caller", "to": "agent-single"},
+        ],
+        "parameters": {},
+    }
+
+    assert engine_module._agent_parts("agent-single", recipe["connections"])["model"] == "model-ollama"

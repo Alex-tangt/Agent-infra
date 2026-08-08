@@ -115,3 +115,15 @@ test("conversion: output passes structure validation with a fixed catalog", () =
     ["agent-single", "context-window", "model-openai", "tool-caller"],
   );
 });
+
+test("conversion: requirement mentioning ollama selects model-ollama", () => {
+  const recipe = requirementToRecipe("用 ollama 做一个会算数的聊天 agent", DEFAULT_CATALOG);
+
+  const ids = recipe.components.map((c) => c.id);
+  assert.ok(ids.includes("model-ollama"));
+  assert.ok(!ids.includes("model-openai"));
+  assert.deepEqual(
+    recipe.connections.find((c) => c.from === "model-ollama"),
+    { from: "model-ollama", to: "agent-single" },
+  );
+});

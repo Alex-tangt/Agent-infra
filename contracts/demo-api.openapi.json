@@ -121,6 +121,57 @@
           }
         }
       }
+    },
+    "/config": {
+      "get": {
+        "summary": "读取运行环境配置（api key 掩码回显，完整值不出 server）",
+        "responses": {
+          "200": {
+            "description": "运行环境配置视图",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RuntimeConfig" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "保存运行环境配置（持久化到 server/config.json）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RuntimeConfigUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存后的运行环境配置视图（api key 掩码回显）",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RuntimeConfig" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/components": {
+      "get": {
+        "summary": "列出注册组件契约（id/version/role/description/inputs/outputs/params）",
+        "responses": {
+          "200": {
+            "description": "组件契约清单",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ComponentsResponse" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -317,6 +368,94 @@
             "enum": ["accepted", "running", "done", "failed"]
           },
           "message": { "type": "string" }
+        }
+      },
+      "RuntimeConfig": {
+        "type": "object",
+        "description": "运行环境配置视图。apiKey 只做掩码回显（如 sk-***abc），完整值不进前端 DOM。",
+        "required": ["apiKey", "baseUrl", "componentParams"],
+        "properties": {
+          "apiKey": { "type": "string" },
+          "baseUrl": { "type": "string" },
+          "componentParams": {
+            "type": "object",
+            "description": "组件级默认参数：组件 id → 参数名 → 值。生成 demo 时配方缺省的参数回退到这里。",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "RuntimeConfigUpdate": {
+        "type": "object",
+        "description": "PUT /config 请求体。apiKey 传掩码占位值（含 ***）表示未改动，不覆盖真实 key。",
+        "properties": {
+          "apiKey": { "type": "string" },
+          "baseUrl": { "type": "string" },
+          "componentParams": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "ComponentPort": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" }
+        }
+      },
+      "ComponentParamSpec": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string" },
+          "default": {},
+          "enum": {
+            "type": "array",
+            "items": {}
+          },
+          "min": { "type": "number" },
+          "max": { "type": "number" }
+        }
+      },
+      "ComponentInfo": {
+        "type": "object",
+        "required": ["id", "version", "role", "description", "inputs", "outputs", "params"],
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "type": "string" },
+          "role": { "type": "string" },
+          "description": { "type": "string" },
+          "inputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ComponentPort" }
+          },
+          "outputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ComponentPort" }
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentParamSpec"
+            }
+          }
+        }
+      },
+      "ComponentsResponse": {
+        "type": "object",
+        "required": ["components"],
+        "properties": {
+          "components": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ComponentInfo" }
+          }
         }
       }
     }

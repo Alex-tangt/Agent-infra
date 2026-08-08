@@ -43,3 +43,5 @@ class ComponentSpec:
     inputs: list[Port] = field(default_factory=list)
     outputs: list[Port] = field(default_factory=list)
     params: dict[str, ParamSpec] = field(default_factory=dict)
+    description: str = ""
+    role: str = ""

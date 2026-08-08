@@ -135,6 +135,76 @@ test("non-ok response throws", async () => {
   await assert.rejects(() => client.getTelemetry("demo-x"));
 });
 
+test("getConfig GETs /config and returns the masked config view", async () => {
+  const captures: Captured[] = [];
+  const client = new DemoApiClient(
+    "http://localhost:8000",
+    mockFetcher(captures, {
+      apiKey: "sk-***abc",
+      baseUrl: "https://api.example.com/v1",
+      componentParams: { "model-openai": { model: "gpt-4o" } },
+    }),
+  );
+
+  const res = await client.getConfig();
+
+  assert.equal(res.apiKey, "sk-***abc");
+  assert.equal(res.baseUrl, "https://api.example.com/v1");
+  assert.equal(res.componentParams["model-openai"]?.model, "gpt-4o");
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0]!.url, "http://localhost:8000/config");
+  assert.equal(captures[0]!.init.method, undefined);
+});
+
+test("updateConfig PUTs JSON to /config", async () => {
+  const captures: Captured[] = [];
+  const client = new DemoApiClient(
+    "http://localhost:8000",
+    mockFetcher(captures, {
+      apiKey: "sk-***abc",
+      baseUrl: "",
+      componentParams: {},
+    }),
+  );
+
+  const res = await client.updateConfig({ apiKey: "sk-***abc" });
+
+  assert.equal(res.apiKey, "sk-***abc");
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0]!.url, "http://localhost:8000/config");
+  assert.equal(captures[0]!.init.method, "PUT");
+  assert.deepEqual(JSON.parse(String(captures[0]!.init.body)), { apiKey: "sk-***abc" });
+});
+
+test("listComponents GETs /components and returns the registry contracts", async () => {
+  const captures: Captured[] = [];
+  const client = new DemoApiClient(
+    "http://localhost:8000",
+    mockFetcher(captures, {
+      components: [
+        {
+          id: "model-openai",
+          version: "1.0",
+          role: "model",
+          description: "模型封装",
+          inputs: [{ name: "messages", type: "MessageList" }],
+          outputs: [{ name: "response", type: "string" }],
+          params: { model: { type: "string", default: "gpt-4o-mini" } },
+        },
+      ],
+    }),
+  );
+
+  const res = await client.listComponents();
+
+  assert.equal(res.components.length, 1);
+  assert.equal(res.components[0]!.id, "model-openai");
+  assert.equal(res.components[0]!.params.model?.default, "gpt-4o-mini");
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0]!.url, "http://localhost:8000/components");
+  assert.equal(captures[0]!.init.method, undefined);
+});
+
 test("DemoApiClient satisfies the DemoApi seam (OTel-backed backend drops in)", () => {
   const client: DemoApi = new DemoApiClient("http://localhost:8000");
 
@@ -142,4 +212,7 @@ test("DemoApiClient satisfies the DemoApi seam (OTel-backed backend drops in)", 
   assert.equal(typeof client.getTelemetry, "function");
   assert.equal(typeof client.triggerAblation, "function");
   assert.equal(typeof client.generateDemo, "function");
+  assert.equal(typeof client.getConfig, "function");
+  assert.equal(typeof client.updateConfig, "function");
+  assert.equal(typeof client.listComponents, "function");
 });

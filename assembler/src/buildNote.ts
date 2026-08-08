@@ -1,5 +1,6 @@
 import type { Answers } from "./clarify.ts";
 import type { Recipe } from "./recipe.ts";
+import { TOOL_SIGNALS } from "./signals.ts";
 
 export interface BuildDecision {
   component: string;
@@ -23,6 +24,7 @@ export interface ComposeBuildNoteOptions {
 
 const ROLE_BY_ID: Record<string, string> = {
   "model-openai": "模型管理——LLM 封装，负责模型调用与 tool calling",
+  "model-ollama": "模型管理——本地 Ollama 封装（OpenAI 兼容端点），负责模型调用与 tool calling",
   "context-window": "上下文管理——多轮对话窗口与截断策略",
   "tool-caller": "工具调用——外部能力（查询/检索/计算等）的挂载点",
   "agent-single": "组装容器——薄循环容器，编排组件并负责停止条件",
@@ -30,22 +32,10 @@ const ROLE_BY_ID: Record<string, string> = {
 
 const REASON_BY_ID: Record<string, string> = {
   "model-openai": "单体 agent 标配三件套之一：agent = 模型管理 + 上下文管理 + 工具调用（agent-design skill）。",
+  "model-ollama": "单体 agent 标配三件套之一：本地 Ollama 模型，agent = 模型管理 + 上下文管理 + 工具调用（agent-design skill）。",
   "context-window": "单体 agent 标配三件套之一：多轮对话需要上下文窗口保持会话。",
   "agent-single": "需求是单 agent 对话/任务代理：三件套外插进薄容器，容器只负责跑循环、停止、返回。",
 };
-
-const TOOL_SIGNALS = [
-  "查",
-  "搜索",
-  "查询",
-  "天气",
-  "weather",
-  "search",
-  "tool",
-  "工具",
-  "计算",
-  "calc",
-] as const;
 
 function connectionsFor(recipe: Recipe, id: string): string[] {
   return recipe.connections

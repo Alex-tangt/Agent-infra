@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DemoApiClient } from "../src/api/apiClient.ts";
@@ -24,7 +25,13 @@ function startPythonServer(): Promise<{ port: number; child: ChildProcess }> {
       ["-m", "server.app", "--host", "127.0.0.1", "--port", "0"],
       {
         cwd: REPO_ROOT,
-        env: { ...process.env, OPENAI_API_KEY: "" },
+        // SERVER_CONFIG_PATH 指向不存在的临时文件：确保本机即使有 server/config.json
+        // 也不影响测试确定性（始终走离线兜底模型）。
+        env: {
+          ...process.env,
+          OPENAI_API_KEY: "",
+          SERVER_CONFIG_PATH: join(tmpdir(), "agent-infra-e2e-config.json"),
+        },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

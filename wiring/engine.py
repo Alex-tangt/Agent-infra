@@ -27,6 +27,14 @@ _TEMPLATES: dict[str, _Template] = {
             f"{output} = {instance}.generate({source})",
         ],
     ),
+    "model-ollama": _Template(
+        import_line="from components.model import register_ollama_model, OllamaModel",
+        register_call="register_ollama_model()",
+        class_name="OllamaModel",
+        steps=lambda instance, source, output: [
+            f"{output} = {instance}.generate({source})",
+        ],
+    ),
     "tool-caller": _Template(
         import_line="from components.tools import register_tool_caller, ToolCaller, Tool",
         register_call="register_tool_caller()",
@@ -49,6 +57,7 @@ _AGENT_COMPONENTS = {"agent-single"}
 _ROLE_BY_COMPONENT = {
     "context-window": "context",
     "model-openai": "model",
+    "model-ollama": "model",
     "tool-caller": "tools",
 }
 

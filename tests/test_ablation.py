@@ -1,4 +1,3 @@
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -50,10 +49,6 @@ BASE_RECIPE = {
     },
 }
 
-TOOL_REQUEST = json.dumps({"tool": "add", "arguments": {"a": 2, "b": 3}})
-MODEL_REPLIES = [TOOL_REQUEST, "the answer is 5"]
-
-
 @pytest.fixture(autouse=True)
 def clean_registry():
     reset()
@@ -91,17 +86,31 @@ def _registry_with_context_2():
 class _FakeOpenAI:
     def __init__(self, **kwargs):
         self._calls = 0
-        self.replies = MODEL_REPLIES
 
     @property
     def chat(self):
         return SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
     def create(self, **kwargs):
-        reply = self.replies[min(self._calls, len(self.replies) - 1)]
         self._calls += 1
+        if self._calls == 1:
+            # 第一轮：原生 tool_calls 请求调用 add 工具
+            message = SimpleNamespace(
+                content=None,
+                tool_calls=[
+                    SimpleNamespace(
+                        id="call_add_1",
+                        type="function",
+                        function=SimpleNamespace(
+                            name="add", arguments='{"a": 2, "b": 3}'
+                        ),
+                    )
+                ],
+            )
+        else:
+            message = SimpleNamespace(content="the answer is 5", tool_calls=None)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=reply))],
+            choices=[SimpleNamespace(message=message)],
             usage=None,
         )
 

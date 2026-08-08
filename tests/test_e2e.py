@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 import textwrap
@@ -16,9 +15,6 @@ from components.tools import register_tool_caller
 from wiring import generate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-TOOL_REQUEST = json.dumps({"tool": "add", "arguments": {"a": 2, "b": 3}})
-MODEL_REPLIES = [TOOL_REQUEST, "the answer is 5"]
 
 CALCULATOR_RECIPE = {
     "name": "calculator-agent",
@@ -67,17 +63,31 @@ def _registry():
 class _FakeOpenAI:
     def __init__(self, **kwargs):
         self._calls = 0
-        self.replies = MODEL_REPLIES
 
     @property
     def chat(self):
         return SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
     def create(self, **kwargs):
-        reply = self.replies[min(self._calls, len(self.replies) - 1)]
         self._calls += 1
+        if self._calls == 1:
+            # 第一轮：原生 tool_calls 请求调用 add 工具
+            message = SimpleNamespace(
+                content=None,
+                tool_calls=[
+                    SimpleNamespace(
+                        id="call_add_1",
+                        type="function",
+                        function=SimpleNamespace(
+                            name="add", arguments='{"a": 2, "b": 3}'
+                        ),
+                    )
+                ],
+            )
+        else:
+            message = SimpleNamespace(content="the answer is 5", tool_calls=None)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=reply))],
+            choices=[SimpleNamespace(message=message)],
             usage=None,
         )
 
@@ -134,7 +144,6 @@ def test_generated_artifact_runs_standalone_as_subprocess(tmp_path):
         from types import SimpleNamespace
         os.environ['OPENAI_API_KEY'] = 'test-key'
         import components.model as model_module
-        REPLIES = {MODEL_REPLIES!r}
         class FakeOpenAI:
             def __init__(self, **kwargs):
                 self._calls = 0
@@ -142,10 +151,24 @@ def test_generated_artifact_runs_standalone_as_subprocess(tmp_path):
             def chat(self):
                 return SimpleNamespace(completions=SimpleNamespace(create=self.create))
             def create(self, **kwargs):
-                reply = REPLIES[min(self._calls, len(REPLIES) - 1)]
                 self._calls += 1
+                if self._calls == 1:
+                    message = SimpleNamespace(
+                        content=None,
+                        tool_calls=[
+                            SimpleNamespace(
+                                id='call_add_1',
+                                type='function',
+                                function=SimpleNamespace(
+                                    name='add', arguments='{{"a": 2, "b": 3}}'
+                                ),
+                            )
+                        ],
+                    )
+                else:
+                    message = SimpleNamespace(content='the answer is 5', tool_calls=None)
                 return SimpleNamespace(
-                    choices=[SimpleNamespace(message=SimpleNamespace(content=reply))],
+                    choices=[SimpleNamespace(message=message)],
                     usage=None,
                 )
         model_module.OpenAI = FakeOpenAI

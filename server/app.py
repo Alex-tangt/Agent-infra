@@ -17,9 +17,18 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._dispatch()
 
+    def do_PUT(self):
+        self._dispatch()
+
     def _dispatch(self) -> None:
         try:
-            match = _PATH_RE.match((self.path or "").split("?")[0])
+            path = (self.path or "").split("?")[0]
+            # 运行环境配置与组件清单端点不走 /demo/{id}/{action} 模式。
+            if path == "/config":
+                return self._handle_config()
+            if path == "/components":
+                return self._handle_components()
+            match = _PATH_RE.match(path)
             if match is None:
                 return self._error(404, f"unknown path: {self.path}")
             demo_id, action = match.groups()
@@ -46,6 +55,18 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._error(500, str(exc))
 
+    def _handle_config(self) -> None:
+        if self.command == "GET":
+            return self._send_json(200, self.runtime.get_config())
+        if self.command == "PUT":
+            return self._send_json(200, self.runtime.update_config(self._read_json()))
+        return self._error(405, "method not allowed")
+
+    def _handle_components(self) -> None:
+        if self.command == "GET":
+            return self._send_json(200, self.runtime.list_components())
+        return self._error(405, "method not allowed")
+
     def _read_json(self) -> dict:
         length = int(self.headers.get("content-length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
@@ -59,7 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         if body:

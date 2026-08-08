@@ -244,3 +244,200 @@
   font-weight: 600;
   margin: 0 0 4px;
 }
+
+/* --- 单页 tab 导航（issue #29） --- */
+
+.runtime-ui-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #d0d7de;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.runtime-ui-tab {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #57606a;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.runtime-ui-tab:hover {
+  background: #f6f8fa;
+}
+
+.runtime-ui-tab.is-active {
+  border-color: #d0d7de;
+  background: #ffffff;
+  color: #1f2328;
+  font-weight: 600;
+}
+
+/* 单页全宽视图：替换原三列网格的 .runtime-ui-panels */
+.runtime-ui-view .panel {
+  min-height: 320px;
+}
+
+/* --- 组件库面板（issue #29） --- */
+
+.components-panel h3,
+.components-panel h4 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+  color: #57606a;
+}
+
+.component-catalog {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.component-catalog-item {
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #f6f8fa;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.component-catalog-item:hover {
+  background: #eaeef2;
+}
+
+.component-catalog-item.is-active {
+  border-color: #1f2328;
+  background: #eaeef2;
+}
+
+.component-name {
+  font-weight: 600;
+}
+
+.component-role {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #ddf4ff;
+  color: #0969da;
+  font-size: 12px;
+}
+
+.component-desc {
+  margin: 4px 0 0;
+  color: #57606a;
+}
+
+.component-manual {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.manual-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #1f2328;
+}
+
+.manual-role {
+  margin: 0 0 6px;
+  color: #0969da;
+}
+
+.manual-desc {
+  margin: 0 0 8px;
+  color: #24292f;
+}
+
+.manual-ports,
+.manual-params {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manual-ports li,
+.manual-params li {
+  padding: 2px 0;
+  border-bottom: 1px dashed #eaeef2;
+}
+
+.config-form {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.config-form h3 {
+  margin-top: 0;
+}
+
+.config-field,
+.config-param {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0;
+}
+
+.config-field span,
+.config-param span {
+  color: #57606a;
+}
+
+.config-field em,
+.config-param em {
+  color: #8b949e;
+  font-style: normal;
+}
+
+.config-field input,
+.config-param input,
+.config-param select {
+  flex: 1;
+  max-width: 320px;
+  padding: 4px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.config-save {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  cursor: pointer;
+}
+
+.config-save:hover {
+  background: #eaeef2;
+}
+
+.config-status {
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.config-saved {
+  color: #1a7f37;
+}
+
+.config-error {
+  color: #cf222e;
+}

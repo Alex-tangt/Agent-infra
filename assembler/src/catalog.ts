@@ -32,6 +32,16 @@ export const DEFAULT_CATALOG: ComponentCatalog = {
       },
     },
     {
+      id: "model-ollama",
+      version: "1.0",
+      params: {
+        model: { type: "string", default: "llama3" },
+        temperature: { type: "number", min: 0, max: 2, default: 0.7 },
+        max_tokens: { type: "number", min: 1, max: 16384, default: 1024 },
+        base_url: { type: "string", default: "http://localhost:11434/v1" },
+      },
+    },
+    {
       id: "context-window",
       version: "1.0",
       params: {

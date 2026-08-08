@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
+import { AGENT_SIGNALS, TOOL_SIGNALS } from "./signals.ts";
+
 export interface SkillMetadata {
   name: string;
   description: string;
@@ -40,27 +42,9 @@ export function readSkillMetadata(skillDir: string): SkillMetadata {
   };
 }
 
-// 与 clarify/requirementToRecipe 的领域信号词汇保持一致：单 agent 对话/任务代理
-// 与外部工具能力都会命中"单 agent 标配组合"设计知识。
-const DESIGN_SIGNALS = [
-  "agent",
-  "assistant",
-  "助手",
-  "对话",
-  "聊天",
-  "chat",
-  "机器人",
-  "工具",
-  "tool",
-  "查",
-  "搜索",
-  "search",
-  "查询",
-  "天气",
-  "weather",
-  "计算",
-  "calc",
-] as const;
+// 设计知识匹配信号 = 单 agent 信号 ∪ 工具信号（单一来源 signals.ts）：
+// 单 agent 对话/任务代理与外部工具能力都会命中"单 agent 标配组合"设计知识。
+const DESIGN_SIGNALS = [...AGENT_SIGNALS, ...TOOL_SIGNALS] as const;
 
 const DESIGN_SKILL_MARKERS = /(组件|组装|组合|连线|配方)/;
 

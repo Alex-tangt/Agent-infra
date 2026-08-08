@@ -8,3 +8,5 @@ dist/
 build/
 .env
 .pytest_cache/
+# 运行环境配置（含明文 api key，不进 git；缺失时用默认值 + 离线兜底）
+server/config.json

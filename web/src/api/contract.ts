@@ -93,12 +93,51 @@ export interface GenerateDemoResponse {
   message?: string;
 }
 
+// 运行环境配置（issue #29）：apiKey 只做掩码回显（如 sk-***abc），
+// 完整值只经 server 配置 API 读写，不存前端 localStorage、不进 DOM。
+export interface RuntimeConfig {
+  apiKey: string;
+  baseUrl: string;
+  componentParams: Record<string, Record<string, unknown>>;
+}
+
+export interface ComponentPort {
+  name: string;
+  type: string;
+}
+
+export interface ComponentParamSpec {
+  type: string;
+  default?: unknown;
+  enum?: unknown[] | null;
+  min?: number | null;
+  max?: number | null;
+}
+
+// 组件契约（来自组件注册表）：接线引擎判断"能不能接、怎么接"的依据。
+export interface ComponentInfo {
+  id: string;
+  version: string;
+  role: string;
+  description: string;
+  inputs: ComponentPort[];
+  outputs: ComponentPort[];
+  params: Record<string, ComponentParamSpec>;
+}
+
+export interface ComponentsResponse {
+  components: ComponentInfo[];
+}
+
 // 调 Python demo 的统一接口（测试接缝）：MockDemoApi 与 DemoApiClient 均实现。
 export interface DemoApi {
   sendChat(demoId: string, messages: ChatMessage[]): Promise<ChatReply>;
   getTelemetry(demoId: string): Promise<TelemetryResponse>;
   triggerAblation(demoId: string, request: AblationRequest): Promise<AblationResponse>;
   generateDemo(demoId: string, request: GenerateDemoRequest): Promise<GenerateDemoResponse>;
+  getConfig(): Promise<RuntimeConfig>;
+  updateConfig(config: Partial<RuntimeConfig>): Promise<RuntimeConfig>;
+  listComponents(): Promise<ComponentsResponse>;
 }
 
 export const endpoints = {
@@ -106,4 +145,6 @@ export const endpoints = {
   telemetry: (demoId: string) => `/demo/${demoId}/telemetry`,
   ablation: (demoId: string) => `/demo/${demoId}/ablations`,
   generateDemo: (demoId: string) => `/demo/${demoId}/generate`,
+  config: "/config",
+  components: "/components",
 } as const;

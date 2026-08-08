@@ -24,6 +24,8 @@ def test_context_component_registered_with_contract():
     assert spec.inputs[0].type == "string"
     assert [p.name for p in spec.outputs] == ["messages"]
     assert spec.outputs[0].type == "MessageList"
+    assert spec.role == "context"
+    assert isinstance(spec.description, str) and spec.description
 
 
 def test_contract_params_declare_defaults_and_bounds():
@@ -39,6 +41,35 @@ def test_contract_params_declare_defaults_and_bounds():
 
 def test_new_window_has_no_messages():
     assert ContextWindow().get_messages() == []
+
+
+def test_system_prompt_is_first_message_when_set():
+    window = ContextWindow(system_prompt="你是中文助手")
+    window.add_user_message("hi")
+
+    messages = window.get_messages()
+
+    assert messages[0] == {"role": "system", "content": "你是中文助手"}
+    assert messages[1] == {"role": "user", "content": "hi"}
+
+
+def test_no_system_message_when_system_prompt_unset():
+    window = ContextWindow()
+    window.add_user_message("hi")
+
+    assert window.get_messages() == [{"role": "user", "content": "hi"}]
+
+
+def test_system_prompt_survives_truncation_and_is_not_counted_as_round():
+    window = ContextWindow(max_rounds=1, system_prompt="system")
+    for i in range(2):
+        window.add_user_message(f"u{i}")
+        window.add_assistant_message(f"a{i}")
+
+    messages = window.get_messages()
+
+    assert messages[0] == {"role": "system", "content": "system"}
+    assert [m["role"] for m in messages] == ["system", "user", "assistant"]
 
 
 def test_output_message_list_is_consumable_by_model_component():

@@ -4,8 +4,10 @@ import type {
   AblationResponse,
   ChatMessage,
   ChatReply,
+  ComponentsResponse,
   GenerateDemoRequest,
   GenerateDemoResponse,
+  RuntimeConfig,
   TelemetryResponse,
 } from "./contract.ts";
 
@@ -55,5 +57,21 @@ export class DemoApiClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(request),
     });
+  }
+
+  getConfig(): Promise<RuntimeConfig> {
+    return this.request<RuntimeConfig>(endpoints.config);
+  }
+
+  updateConfig(config: Partial<RuntimeConfig>): Promise<RuntimeConfig> {
+    return this.request<RuntimeConfig>(endpoints.config, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(config),
+    });
+  }
+
+  listComponents(): Promise<ComponentsResponse> {
+    return this.request<ComponentsResponse>(endpoints.components);
   }
 }

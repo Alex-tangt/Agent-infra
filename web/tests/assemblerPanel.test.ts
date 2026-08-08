@@ -8,12 +8,12 @@ import {
 } from "../src/panels/assemblerPanel.ts";
 import type {
   AssemblerPanelState,
-  AssemblerPort,
   GenerateDemoApi,
 } from "../src/panels/assemblerPanel.ts";
+import type { AssemblerPort } from "../src/api/assemblerContract.ts";
 import type { Recipe } from "../src/api/contract.ts";
 import { MockDemoApi } from "../src/mockDemoApi.ts";
-import { requirementToRecipe as assembleRecipe } from "../../assembler/src/requirementToRecipe.ts";
+import { AssemblerApiClient } from "../src/api/assemblerApi.ts";
 
 function sampleRecipe(): Recipe {
   return {
@@ -34,6 +34,7 @@ function sampleRecipe(): Recipe {
 function baseState(): AssemblerPanelState {
   return {
     requirement: "",
+    questions: null,
     recipe: null,
     json: "",
     error: null,
@@ -57,9 +58,13 @@ test("assembler panel renders input forms and empty state before a recipe exists
 test("assembler session generates a recipe through an injected assembler (mock 组装器可测)", async () => {
   const calls: string[] = [];
   const assembler: AssemblerPort = {
-    requirementToRecipe: (requirement) => {
+    assemble: async (requirement) => {
       calls.push(requirement);
-      return sampleRecipe();
+      return { status: "recipe", recipe: sampleRecipe() };
+    },
+    assembleWithAnswers: async (requirement) => {
+      calls.push(requirement);
+      return { status: "recipe", recipe: sampleRecipe() };
     },
   };
   const session = new AssemblerSession("demo-x", assembler, new MockDemoApi());
@@ -161,7 +166,11 @@ test("assembler session sends the current recipe to the wiring engine entry", as
       return { demoId, status: "done", message: "accepted" };
     },
   };
-  const session = new AssemblerSession("demo-x", new MockAssembler(), api);
+  const assembler: AssemblerPort = {
+    assemble: async () => ({ status: "recipe", recipe: sampleRecipe() }),
+    assembleWithAnswers: async () => ({ status: "recipe", recipe: sampleRecipe() }),
+  };
+  const session = new AssemblerSession("demo-x", assembler, api);
   session.setRequirement("会查天气的 agent");
   await session.generate();
 
@@ -199,10 +208,21 @@ test("assembler session ignores generate-demo while no recipe is ready", async (
   assert.equal(session.getState().demoStatus, null);
 });
 
-test("real chain: the panel drives the assembler's requirementToRecipe (no mock)", async () => {
+// real chain: 面板经 HTTP 客户端（AssemblerApiClient）驱动组装器服务走真实"需求→配方"链路
+test("real chain: the panel drives the assembler service over HTTP (no mock)", async () => {
+  const fetcher = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    assert.equal(String(url), "http://localhost:9001/assemble");
+    const body = JSON.parse(String(init?.body)) as { requirement: string };
+    const recipe = sampleRecipe();
+    recipe.name = "weather-agent";
+    return new Response(JSON.stringify({ status: "recipe", recipe }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
   const session = new AssemblerSession(
     "demo-x",
-    { requirementToRecipe: (r) => assembleRecipe(r) },
+    new AssemblerApiClient("http://localhost:9001", fetcher),
     new MockDemoApi(),
   );
   session.setRequirement("我要一个会查天气的 agent");
@@ -215,4 +235,64 @@ test("real chain: the panel drives the assembler's requirementToRecipe (no mock)
   assert.ok(ids.includes("tool-caller"));
   assert.ok(ids.includes("model-openai"));
   assert.ok(ids.includes("context-window"));
+});
+
+// 澄清机制接入：needsClarification 返回问题 → 界面展示 → 用户回答 → 带 answers 再次调用
+test("assembler session surfaces clarification questions and answers into a recipe", async () => {
+  const requests: unknown[] = [];
+  const fetcher = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const body = JSON.parse(String(init?.body)) as { requirement: string; answers?: unknown };
+    requests.push(body);
+    const outcome =
+      body.answers === undefined
+        ? { status: "clarify", questions: ["选哪个模型？", "需要哪些工具？"] }
+        : { status: "recipe", recipe: sampleRecipe() };
+    return new Response(JSON.stringify(outcome), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const session = new AssemblerSession(
+    "demo-x",
+    new AssemblerApiClient("http://localhost:9001", fetcher),
+    new MockDemoApi(),
+  );
+  session.setRequirement("做一个带工具的 agent");
+
+  await session.generate();
+  const clarified = session.getState();
+  assert.equal(clarified.recipe, null);
+  assert.deepEqual(clarified.questions, ["选哪个模型？", "需要哪些工具？"]);
+
+  const html = renderAssemblerPanel(clarified);
+  assert.match(html, /选哪个模型/);
+  assert.match(html, /assembler-answers/);
+  assert.match(html, /提交答案/);
+
+  await session.answer({ model: "gpt-4o", tools: ["天气"] });
+  const done = session.getState();
+  assert.equal(done.questions, null);
+  assert.ok(done.recipe);
+  assert.equal(done.recipe.name, "weather-agent");
+  assert.deepEqual(requests, [
+    { requirement: "做一个带工具的 agent" },
+    {
+      requirement: "做一个带工具的 agent",
+      answers: { model: "gpt-4o", tools: ["天气"] },
+    },
+  ]);
+});
+
+test("assembler session reports an http failure as a panel error", async () => {
+  const session = new AssemblerSession(
+    "demo-x",
+    new AssemblerApiClient("http://localhost:9001", async () => new Response("boom", { status: 500 })),
+    new MockDemoApi(),
+  );
+  session.setRequirement("会查天气的 agent");
+  await session.generate();
+
+  const state = session.getState();
+  assert.equal(state.recipe, null);
+  assert.match(state.error ?? "", /failed: 500/);
 });

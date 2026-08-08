@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from components.agent import Agent
 from components.context import ContextWindow
-from components.model import OpenAIModel, TokenUsage
+from components.model import ModelReply, OpenAIModel, ToolCall, TokenUsage
 from components.tools import Tool, ToolCaller
 from telemetry.interceptor import TelemetryInterceptor
 
@@ -13,7 +13,7 @@ class FakeModel:
         self._replies = list(replies)
         self.calls = 0
 
-    def generate(self, messages):
+    def generate(self, messages, tools=None):
         index = min(self.calls, len(self._replies) - 1)
         self.calls += 1
         return self._replies[index]
@@ -62,7 +62,7 @@ class _ReportingModel:
     def __init__(self):
         self.on_usage = None
 
-    def generate(self, messages):
+    def generate(self, messages, tools=None):
         self.on_usage(
             "model-openai",
             TokenUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7),
@@ -91,6 +91,9 @@ class _MinimalContext:
 
 
 class _MinimalTools:
+    def available_tools(self):
+        return []
+
     def call(self, request):
         return SimpleNamespace(success=True, output="ok", tool_call_id="c")
 
@@ -125,7 +128,15 @@ def test_wrap_component_records_duration_and_call_count():
 
 def test_run_records_each_component_call_in_the_agent_loop():
     model = FakeModel(
-        [json.dumps({"tool": "add", "arguments": {"a": 2, "b": 3}}), "the answer is 5"]
+        [
+            ModelReply(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_add_1", name="add", arguments={"a": 2, "b": 3})
+                ],
+            ),
+            "the answer is 5",
+        ]
     )
     context = ContextWindow()
     tools = ToolCaller(tools=[make_add_tool()])

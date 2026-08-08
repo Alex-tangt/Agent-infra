@@ -1,12 +1,17 @@
-import json
 from types import SimpleNamespace
 
 import pytest
 
 from components import as_dict, get_component, reset
-from components.agent import Agent, ToolRequest, default_turn_strategy, register_agent
+from components.agent import (
+    Agent,
+    ToolRequest,
+    build_tool_schemas,
+    default_turn_strategy,
+    register_agent,
+)
 from components.context import ContextWindow
-from components.model import OpenAIModel
+from components.model import ModelReply, OpenAIModel, ToolCall
 from components.tools import Tool, ToolCallResult, ToolCaller
 from recipe import validate
 
@@ -23,9 +28,11 @@ class FakeModel:
         self._replies = list(replies)
         self.calls = 0
         self.messages_seen = []
+        self.tools_seen = []
 
-    def generate(self, messages):
+    def generate(self, messages, tools=None):
         self.messages_seen.append(list(messages))
+        self.tools_seen.append(tools)
         index = min(self.calls, len(self._replies) - 1)
         self.calls += 1
         return self._replies[index]
@@ -53,7 +60,7 @@ class FakeClient:
 
 
 class _MinimalModel:
-    def generate(self, messages):
+    def generate(self, messages, tools=None):
         return "final"
 
 
@@ -72,6 +79,9 @@ class _MinimalContext:
 
 
 class _MinimalTools:
+    def available_tools(self):
+        return []
+
     def call(self, request):
         return ToolCallResult(
             tool_name=request.tool_name,
@@ -155,7 +165,12 @@ def test_returns_final_reply_when_model_does_not_request_tool():
 def test_runs_full_loop_llm_tool_llm_and_returns_summary():
     model = FakeModel(
         [
-            json.dumps({"tool": "add", "arguments": {"a": 2, "b": 3}}),
+            ModelReply(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_add_1", name="add", arguments={"a": 2, "b": 3})
+                ],
+            ),
             "the answer is 5",
         ]
     )
@@ -169,14 +184,21 @@ def test_runs_full_loop_llm_tool_llm_and_returns_summary():
     assert model.calls == 2
     messages = context.get_messages()
     assert [m["role"] for m in messages] == ["user", "assistant", "tool", "assistant"]
+    assert messages[1]["tool_calls"][0]["id"] == "call_add_1"
+    assert messages[1]["tool_calls"][0]["function"]["name"] == "add"
     assert messages[2]["content"] == "5"
-    assert messages[2]["tool_call_id"]
+    assert messages[2]["tool_call_id"] == "call_add_1"
 
 
 def test_tool_result_is_fed_back_to_model_in_second_turn():
     model = FakeModel(
         [
-            json.dumps({"tool": "add", "arguments": {"a": 2, "b": 3}}),
+            ModelReply(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_add_1", name="add", arguments={"a": 2, "b": 3})
+                ],
+            ),
             "the answer is 5",
         ]
     )
@@ -193,8 +215,13 @@ def test_tool_result_is_fed_back_to_model_in_second_turn():
 
 
 def test_stops_after_max_iterations_when_model_keeps_requesting_tools():
-    tool_request = json.dumps({"tool": "add", "arguments": {"a": 1, "b": 1}})
-    model = FakeModel([tool_request])
+    tool_call = ModelReply(
+        content=None,
+        tool_calls=[
+            ToolCall(id="call_add_1", name="add", arguments={"a": 1, "b": 1})
+        ],
+    )
+    model = FakeModel([tool_call])
     agent = Agent(
         model=model,
         context=ContextWindow(),
@@ -205,7 +232,55 @@ def test_stops_after_max_iterations_when_model_keeps_requesting_tools():
     reply = agent.run("keep going")
 
     assert model.calls == 3
-    assert reply == tool_request
+    assert reply == ""
+
+
+def test_agent_passes_openai_function_schemas_to_model():
+    tools = ToolCaller(tools=[make_add_tool()])
+    model = FakeModel(["done"])
+    agent = Agent(model=model, context=ContextWindow(), tools=tools)
+
+    agent.run("hi")
+
+    assert model.tools_seen == [
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add",
+                    "description": "",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]
+    ]
+
+
+def test_agent_executes_multiple_native_tool_calls_in_one_turn():
+    model = FakeModel(
+        [
+            ModelReply(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="add", arguments={"a": 2, "b": 3}),
+                    ToolCall(id="call_2", name="add", arguments={"a": 10, "b": 20}),
+                ],
+            ),
+            "30",
+        ]
+    )
+    agent = Agent(
+        model=model,
+        context=ContextWindow(),
+        tools=ToolCaller(tools=[make_add_tool()]),
+    )
+
+    reply = agent.run("sum them")
+
+    assert reply == "30"
+    messages = agent._context.get_messages()
+    assert [m["role"] for m in messages] == ["user", "assistant", "tool", "tool", "assistant"]
+    assert [m["content"] for m in messages if m["role"] == "tool"] == ["5", "30"]
 
 
 def test_default_turn_strategy_returns_none_for_plain_text():
@@ -248,3 +323,44 @@ def test_agent_rejects_invalid_max_iterations():
             tools=_MinimalTools(),
             max_iterations=0,
         )
+
+
+def test_build_tool_schemas_renders_openai_function_calling_format():
+    tool = Tool(
+        name="get_weather",
+        description="查询城市天气",
+        parameters={"city": {"type": "string"}},
+    )
+
+    schemas = build_tool_schemas([tool])
+
+    assert schemas == [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "查询城市天气",
+                "parameters": {"city": {"type": "string"}},
+            },
+        }
+    ]
+
+
+def test_build_tool_schemas_defaults_empty_parameters_to_object_schema():
+    tool = Tool(name="add", func=lambda a, b: a + b)
+
+    schemas = build_tool_schemas([tool])
+
+    assert schemas[0]["function"]["parameters"] == {
+        "type": "object",
+        "properties": {},
+    }
+
+
+def test_agent_component_contract_has_description_and_role():
+    register_agent()
+
+    spec = get_component("agent-single", "1.0")
+
+    assert spec.role == "agent"
+    assert isinstance(spec.description, str) and spec.description

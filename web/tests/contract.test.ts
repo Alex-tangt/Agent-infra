@@ -18,3 +18,11 @@ test("contract: ablation endpoint is /demo/{id}/ablations", () => {
 test("contract: generate-demo endpoint is /demo/{id}/generate", () => {
   assert.equal(endpoints.generateDemo("demo-x"), "/demo/demo-x/generate");
 });
+
+test("contract: config endpoint is /config", () => {
+  assert.equal(endpoints.config, "/config");
+});
+
+test("contract: components endpoint is /components", () => {
+  assert.equal(endpoints.components, "/components");
+});

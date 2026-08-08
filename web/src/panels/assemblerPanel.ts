@@ -1,41 +1,53 @@
-﻿import type { Recipe } from "../api/contract.ts";
+import type { Recipe } from "../api/contract.ts";
 import type { DemoApi } from "../api/contract.ts";
-
-// 组装器联动面板依赖的接口契约（测试接缝）：真实实现是 assembler 的 requirementToRecipe
-// 纯函数（测试直接 import 组装器源码走真实链路），也可注入 mock。
-export interface AssemblerPort {
-  requirementToRecipe(requirement: string): Recipe;
-}
+import type {
+  Answers,
+  AssembleOutcome,
+  AssemblerPort,
+} from "../api/assemblerContract.ts";
 
 // 生成 demo 依赖的后端入口（测试接缝）：与 DemoApi 共享，MockDemoApi 与 DemoApiClient 均满足。
 export type GenerateDemoApi = Pick<DemoApi, "generateDemo">;
 
-// 骨架默认组装器：无后端时也能产出可运行配方，与 MockDemoApi 同一套 mock 思路。
+// 骨架默认组装器：无组装器服务时也能产出可运行配方，与 MockDemoApi 同一套 mock 思路。
+// 接口见 assemblerContract.AssemblerPort（真实实现是 HTTP 客户端 AssemblerApiClient）。
 export class MockAssembler implements AssemblerPort {
-  requirementToRecipe(_requirement: string): Recipe {
-    return {
-      name: "mock-agent",
-      components: [
-        { id: "context-window", version: "1.0" },
-        { id: "model-openai", version: "1.0" },
-        { id: "tool-caller", version: "1.0" },
-        { id: "agent-single", version: "1.0" },
-      ],
-      connections: [
-        { from: "context-window", to: "agent-single" },
-        { from: "model-openai", to: "agent-single" },
-        { from: "tool-caller", to: "agent-single" },
-      ],
-      parameters: {
-        "agent-single": {},
-        "model-openai": { model: "gpt-4o-mini" },
-      },
-    };
+  async assemble(_requirement: string): Promise<AssembleOutcome> {
+    return { status: "recipe", recipe: mockRecipe() };
   }
+
+  async assembleWithAnswers(
+    _requirement: string,
+    _answers: Answers,
+  ): Promise<AssembleOutcome> {
+    return { status: "recipe", recipe: mockRecipe() };
+  }
+}
+
+function mockRecipe(): Recipe {
+  return {
+    name: "mock-agent",
+    components: [
+      { id: "context-window", version: "1.0" },
+      { id: "model-openai", version: "1.0" },
+      { id: "tool-caller", version: "1.0" },
+      { id: "agent-single", version: "1.0" },
+    ],
+    connections: [
+      { from: "context-window", to: "agent-single" },
+      { from: "model-openai", to: "agent-single" },
+      { from: "tool-caller", to: "agent-single" },
+    ],
+    parameters: {
+      "agent-single": {},
+      "model-openai": { model: "gpt-4o-mini" },
+    },
+  };
 }
 
 export interface AssemblerPanelState {
   requirement: string;
+  questions: string[] | null;
   recipe: Recipe | null;
   json: string;
   error: string | null;
@@ -59,9 +71,11 @@ function isRecipe(value: unknown): value is Recipe {
   );
 }
 
-// 组装会话：输入需求 → 调组装器得到配方 → 手动粘贴/编辑配方 JSON → 一键生成 demo。
+// 组装会话：输入需求 → 调组装器得到配方（真实链路经 HTTP 服务，澄清问题先问后答）
+// → 手动粘贴/编辑配方 JSON → 一键生成 demo。
 export class AssemblerSession {
   private requirement = "";
+  private questions: string[] | null = null;
   private recipe: Recipe | null = null;
   private json = "";
   private error: string | null = null;
@@ -81,6 +95,7 @@ export class AssemblerSession {
   getState(): AssemblerPanelState {
     return {
       requirement: this.requirement,
+      questions: this.questions,
       recipe: this.recipe,
       json: this.json,
       error: this.error,
@@ -94,18 +109,51 @@ export class AssemblerSession {
     this.requirement = text;
   }
 
+  // 生成配方：一次调用可能返回澄清问题（needsClarification）而非配方，
+  // 界面展示问题 → 用户回答 → answer() 带 answers 再次调用（assembleWithAnswers）。
   async generate(): Promise<void> {
     if (this.pending) return;
     this.pending = true;
     this.error = null;
     try {
-      const recipe = this.assembler.requirementToRecipe(this.requirement);
-      this.recipe = recipe;
-      this.json = JSON.stringify(recipe, null, 2);
-      this.demoStatus = null;
+      const outcome = await this.assembler.assemble(this.requirement);
+      this.applyOutcome(outcome);
+    } catch (exc) {
+      this.error = exc instanceof Error ? exc.message : String(exc);
     } finally {
       this.pending = false;
     }
+  }
+
+  async answer(answers: Answers): Promise<void> {
+    if (this.pending) return;
+    this.pending = true;
+    this.error = null;
+    try {
+      const outcome = await this.assembler.assembleWithAnswers(
+        this.requirement,
+        answers,
+      );
+      this.applyOutcome(outcome);
+    } catch (exc) {
+      this.error = exc instanceof Error ? exc.message : String(exc);
+    } finally {
+      this.pending = false;
+    }
+  }
+
+  private applyOutcome(outcome: AssembleOutcome): void {
+    if (outcome.status === "clarify") {
+      this.questions = outcome.questions;
+      this.recipe = null;
+      this.json = "";
+      this.demoStatus = null;
+      return;
+    }
+    this.questions = null;
+    this.recipe = outcome.recipe;
+    this.json = JSON.stringify(outcome.recipe, null, 2);
+    this.demoStatus = null;
   }
 
   loadJson(text: string): void {
@@ -195,12 +243,26 @@ export function renderAssemblerPanel(state: AssemblerPanelState): string {
   }</ul>
 </div>`;
 
+  const questions = state.questions;
+  const questionHtml =
+    questions && questions.length > 0
+      ? `<form class="assembler-answers">
+  <p class="assembler-questions">${questions
+    .map((q) => `<span class="assembler-question" data-question="${escapeHtml(q)}">${escapeHtml(q)}</span>`)
+    .join(" ")}</p>
+  <input name="model" type="text" placeholder="模型（如 gpt-4o）"${pendingDisabled} />
+  <input name="tools" type="text" placeholder="工具（逗号分隔，如：天气、搜索）"${pendingDisabled} />
+  <button type="submit"${pendingDisabled}>提交答案</button>
+</form>`
+      : "";
+
   return `<section class="panel assembler-panel">
   <h2>组装器</h2>
   <form class="assembler-requirement">
     <input name="requirement" type="text" value="${escapeHtml(state.requirement)}" placeholder="描述需求，如：会查天气的 agent"${pendingDisabled} />
     <button type="submit"${pendingDisabled}>生成配方</button>
   </form>
+  ${questionHtml}
   <form class="assembler-json">
     <textarea name="json" rows="6" placeholder="或直接粘贴配方 JSON…"${pendingDisabled}>${escapeHtml(state.json)}</textarea>
     <button type="submit"${pendingDisabled}>应用配方</button>

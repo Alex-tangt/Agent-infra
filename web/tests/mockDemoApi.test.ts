@@ -48,3 +48,37 @@ test("mock generateDemo accepts a recipe and reports the demo as done", async ()
   assert.equal(res.status, "done");
   assert.match(res.message ?? "", /接受配方/);
 });
+
+test("mock config read/write keeps masked api key semantics", async () => {
+  const api = new MockDemoApi();
+
+  const saved = await api.updateConfig({
+    apiKey: "sk-real-key",
+    baseUrl: "https://api.example.com/v1",
+    componentParams: { "model-openai": { model: "gpt-4o" } },
+  });
+  assert.equal(saved.apiKey, "sk-real-key");
+  assert.equal(saved.baseUrl, "https://api.example.com/v1");
+  assert.equal(saved.componentParams["model-openai"]?.model, "gpt-4o");
+
+  // 掩码占位回传不覆盖真实 key（与 server 同一语义）
+  const untouched = await api.updateConfig({ apiKey: "sk-***key" });
+  assert.equal(untouched.apiKey, "sk-real-key");
+
+  const view = await api.getConfig();
+  assert.equal(view.apiKey, "sk-real-key");
+});
+
+test("mock listComponents returns the registry-aligned catalog", async () => {
+  const api = new MockDemoApi();
+  const res = await api.listComponents();
+
+  const ids = res.components.map((c) => c.id).sort();
+  assert.deepEqual(ids, ["agent-single", "context-window", "model-openai", "tool-caller"]);
+  const model = res.components.find((c) => c.id === "model-openai")!;
+  assert.equal(model.role, "model");
+  assert.ok(model.description.length > 0);
+  assert.ok(model.inputs.length > 0);
+  assert.ok(model.outputs.length > 0);
+  assert.ok(Object.keys(model.params).length > 0);
+});
