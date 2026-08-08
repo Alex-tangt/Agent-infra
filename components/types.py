@@ -45,3 +45,4 @@ class ComponentSpec:
     params: dict[str, ParamSpec] = field(default_factory=dict)
     description: str = ""
     role: str = ""
+    class_name: str = ""

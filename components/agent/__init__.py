@@ -11,6 +11,7 @@ AGENT_SPEC = ComponentSpec(
     version="1.0",
     description="单体 agent 薄容器组件：编排模型、上下文与工具执行器，负责工具循环与停止条件。",
     role="agent",
+    class_name="Agent",
     inputs=[Port(name="user_message", type="string")],
     outputs=[Port(name="reply", type="string")],
     params={

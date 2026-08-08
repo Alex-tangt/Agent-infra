@@ -37,6 +37,7 @@ MODEL_SPEC = ComponentSpec(
     version="1.0",
     description="OpenAI 兼容大模型封装组件：接收消息列表，透传原生工具 schema，返回回复文本或结构化工具调用。",
     role="model",
+    class_name="OpenAIModel",
     inputs=[Port(name="messages", type="MessageList")],
     outputs=[Port(name="response", type="string")],
     params={

@@ -13,6 +13,7 @@ OLLAMA_MODEL_SPEC = ComponentSpec(
     version="1.0",
     description="本地 Ollama 大模型封装组件：OpenAI 兼容 client 指向本地服务，支持原生工具调用与 token 上报。",
     role="model",
+    class_name="OllamaModel",
     inputs=[Port(name="messages", type="MessageList")],
     outputs=[Port(name="response", type="string")],
     params={

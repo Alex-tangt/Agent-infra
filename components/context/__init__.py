@@ -61,6 +61,7 @@ SPEC = ComponentSpec(
     version="1.0",
     description="上下文窗口组件：维护对话消息列表，支持轮次截断与 system prompt 注入。",
     role="context",
+    class_name="ContextWindow",
     inputs=[Port(name="user_message", type="string")],
     outputs=[Port(name="messages", type="MessageList")],
     params={
