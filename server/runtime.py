@@ -258,7 +258,10 @@ class RuntimeUI:
 
     def get_telemetry(self, demo_id: str) -> dict:
         with self._lock:
-            demo = self._get_demo(demo_id)
+            demo = self._demos.get(demo_id)
+            if demo is None:
+                # demo 未生成时遥测天然为空（如 web 启动即轮询），返回 200 而非 404。
+                return {"spans": []}
             spans = [
                 _span_to_contract(span, index)
                 for index, span in enumerate(demo.interceptor.spans)

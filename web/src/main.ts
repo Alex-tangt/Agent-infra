@@ -3,7 +3,7 @@ import type { AppState } from "./app.ts";
 import { ChatSession } from "./panels/chatPanel.ts";
 import { EvalSession } from "./panels/evalPanel.ts";
 import { AssemblerSession, MockAssembler } from "./panels/assemblerPanel.ts";
-import type { AblationKind } from "./api/contract.ts";
+import type { AblationKind, TelemetrySpan } from "./api/contract.ts";
 import { createDemoApi } from "./api/createDemoApi.ts";
 
 const DEMO_ID = "demo-1";
@@ -20,9 +20,14 @@ async function main(): Promise<void> {
   // 组装器联动（U5）：需求→配方→一键生成 demo；配方产出交给真实接线引擎（或 mock）落地运行。
   const assemblerSession = new AssemblerSession(DEMO_ID, new MockAssembler(), api);
 
+  // demo 尚未生成时 telemetry 会 404，启动期容错为空，避免拖垮整个 UI。
+  const initialTelemetry = await api
+    .getTelemetry(DEMO_ID)
+    .catch(() => ({ spans: [] as TelemetrySpan[] }));
+
   const state: AppState = {
     chat: { messages: [] },
-    debug: { spans: (await api.getTelemetry(DEMO_ID)).spans },
+    debug: { spans: initialTelemetry.spans },
     eval: { run: null },
     assembler: assemblerSession.getState(),
   };
